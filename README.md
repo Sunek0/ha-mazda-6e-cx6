@@ -1,7 +1,6 @@
 # ha-mazda-6e-cx6
 
-Home Assistant custom integration for **Mazda 6e** and **Mazda CX-6e** connected vehicles (the
-Deepal L07 and S07 twins) over the official Mazda app backend (`com.cma.mazda.eu`).
+Home Assistant custom integration for **Mazda 6e** and **Mazda CX-6e** connected vehicles over the official Mazda app backend (`com.cma.mazda.eu`).
 
 ## Important warnings
 
