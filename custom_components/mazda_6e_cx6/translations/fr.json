@@ -1,0 +1,405 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Mazda 6e & CX-6e",
+        "description": "Set up your Mazda 6e or CX-6e account (the MAZDA 6e & CX-6e app account). Sign in with the email and password of the app, or request a verification code by email.",
+        "data": {
+          "login_method": "Login method"
+        },
+        "data_description": {
+          "login_method": "Email and password signs in directly; email verification code sends a one-time code to the account email."
+        }
+      },
+      "email_password": {
+        "title": "Email and password",
+        "description": "Select the sales country registered in the Mazda app and enter the account credentials. Home Assistant stores the session tokens, never the password.",
+        "data": {
+          "country": "Sales country",
+          "email": "Email",
+          "password": "Password"
+        },
+        "data_description": {
+          "country": "Sales country of the account, for example Spain. It is sent as selectcountry and salesCountry.",
+          "email": "Email used in the Mazda app. It is encrypted before it is sent.",
+          "password": "Password used in the Mazda app. It is encrypted before it is sent and is never stored."
+        }
+      },
+      "intl_email": {
+        "title": "Email login",
+        "description": "Select the sales country registered in the Mazda app and the account email. Home Assistant will request a verification code.",
+        "data": {
+          "country": "Sales country",
+          "email": "Email"
+        },
+        "data_description": {
+          "country": "Sales country of the account, for example Spain. It is sent as selectcountry and salesCountry.",
+          "email": "Email used in the Mazda app. It is encrypted before it is sent."
+        }
+      },
+      "intl_email_code": {
+        "title": "Email verification code",
+        "description": "Enter the verification code that was sent to the email address.",
+        "data": {
+          "auth_code": "Verification code"
+        },
+        "data_description": {
+          "auth_code": "Numeric code from the email. It expires quickly; request a new one if it is rejected."
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Authentication failed.",
+      "cannot_connect": "Could not reach the Mazda API.",
+      "too_many_codes": "Too many verification codes requested. Wait and try again.",
+      "account_not_registered": "This account is not registered for the selected country.",
+      "bad_code": "The verification code is invalid or has expired.",
+      "no_vehicles": "The account has no vehicles linked.",
+      "wrong_account": "This account does not own the configured vehicle."
+    },
+    "abort": {
+      "already_configured": "This account is already configured.",
+      "reauth_successful": "Reauthentication was successful."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Mazda 6e & CX-6e options",
+        "data": {
+          "scan_interval": "Scan interval (seconds)",
+          "control_pin": "Remote control PIN",
+          "enable_api_logging": "Log redacted API traffic",
+          "enable_mqtt_controls": "Enable experimental remote controls for MQTT vehicles",
+          "os_version": "Declared Android version (diagnostic)",
+          "environment": "Regional environment (diagnostic)"
+        },
+        "description": "Tune polling and diagnostics. The control PIN enables signed remote commands; the diagnostic options change how the API sees the client and should only be touched while troubleshooting.",
+        "data_description": {
+          "scan_interval": "How often Home Assistant polls the vehicle when no MQTT telemetry is available, in seconds (30-3600).",
+          "control_pin": "Remote-control PIN from the Mazda app. Required to lock/unlock, move the windows or open the trunk; it is exchanged for a token that expires periodically and is asked for again when that happens.",
+          "enable_api_logging": "Write every API request and response to the Home Assistant log, with tokens, keys, VIN, email, PIN and serial number redacted. Enable only while troubleshooting.",
+          "enable_mqtt_controls": "Allow remote commands for MQTT-backed vehicles. Experimental: MQTT command sending is not verified yet.",
+          "os_version": "Android version declared in the x-os-version header. The default (9) matches the verified Changan capture; change it only to diagnose requests rejected by the gateway.",
+          "environment": "Regional gateway set used for the Mazda API. EU production by default; preproduction targets the UAT gateways."
+        }
+      }
+    }
+  },
+  "entity": {
+    "image": {
+      "vehicle_image": {
+        "name": "Image du véhicule"
+      }
+    },
+    "sensor": {
+      "battery_level": {
+        "name": "Niveau de batterie"
+      },
+      "remaining_range": {
+        "name": "Autonomie restante"
+      },
+      "total_odometer": {
+        "name": "Kilométrage total"
+      },
+      "mileage_yesterday": {
+        "name": "Kilométrage d'hier"
+      },
+      "trip_mileage": {
+        "name": "Kilométrage du trajet"
+      },
+      "tire_pressure_front_left": {
+        "name": "Pression du pneu avant gauche"
+      },
+      "tire_pressure_front_right": {
+        "name": "Pression du pneu avant droit"
+      },
+      "tire_pressure_rear_left": {
+        "name": "Pression du pneu arrière gauche"
+      },
+      "tire_pressure_rear_right": {
+        "name": "Pression du pneu arrière droit"
+      },
+      "seat_heating_level_front_left": {
+        "name": "Niveau de chauffage du siège avant gauche"
+      },
+      "seat_heating_level_front_right": {
+        "name": "Niveau de chauffage du siège avant droit"
+      },
+      "seat_heating_level_rear_left": {
+        "name": "Niveau de chauffage du siège arrière gauche"
+      },
+      "seat_heating_level_rear_right": {
+        "name": "Niveau de chauffage du siège arrière droit"
+      },
+      "seat_ventilation_level_front_left": {
+        "name": "Niveau de ventilation du siège avant gauche"
+      },
+      "seat_ventilation_level_front_right": {
+        "name": "Niveau de ventilation du siège avant droit"
+      },
+      "seat_ventilation_level_rear_left": {
+        "name": "Niveau de ventilation du siège arrière gauche"
+      },
+      "seat_ventilation_level_rear_right": {
+        "name": "Niveau de ventilation du siège arrière droit"
+      },
+      "steering_wheel_heater_level": {
+        "name": "Niveau de chauffage du volant"
+      },
+      "speed": {
+        "name": "Vitesse"
+      },
+      "inside_temperature": {
+        "name": "Température intérieure"
+      },
+      "outside_temperature": {
+        "name": "Température extérieure"
+      },
+      "cabin_humidity": {
+        "name": "Humidité de l'habitacle"
+      },
+      "inside_pm25": {
+        "name": "PM2.5 intérieur"
+      },
+      "air_quality_level": {
+        "name": "Niveau de qualité de l'air"
+      },
+      "charge_status": {
+        "name": "État de charge"
+      },
+      "charge_current": {
+        "name": "Courant de charge"
+      },
+      "ac_charge_current": {
+        "name": "Courant de charge CA"
+      },
+      "dc_charge_current": {
+        "name": "Courant de charge CC"
+      },
+      "remaining_charge_time": {
+        "name": "Temps de charge restant"
+      },
+      "charge_limit": {
+        "name": "Limite de charge"
+      },
+      "charge_schedule_start": {
+        "name": "Début de la plage de charge"
+      },
+      "charge_schedule_end": {
+        "name": "Fin de la plage de charge"
+      },
+      "fuel_level": {
+        "name": "Niveau de carburant"
+      },
+      "fuel_range": {
+        "name": "Autonomie en carburant"
+      },
+      "fuel_tank_capacity": {
+        "name": "Capacité du réservoir de carburant"
+      },
+      "vehicle_status": {
+        "name": "État du véhicule"
+      },
+      "power_status": {
+        "name": "État d'alimentation"
+      },
+      "gear": {
+        "name": "Rapport"
+      },
+      "epb_status": {
+        "name": "Frein de stationnement électronique"
+      },
+      "last_updated": {
+        "name": "Dernière mise à jour"
+      }
+    },
+    "binary_sensor": {
+      "charger_plugged": {
+        "name": "Chargeur branché"
+      },
+      "doors_lock_state": {
+        "name": "État du verrouillage"
+      },
+      "tire_alarm_front_left": {
+        "name": "Alarme du pneu avant gauche"
+      },
+      "tire_alarm_front_right": {
+        "name": "Alarme du pneu avant droit"
+      },
+      "tire_alarm_rear_left": {
+        "name": "Alarme du pneu arrière gauche"
+      },
+      "tire_alarm_rear_right": {
+        "name": "Alarme du pneu arrière droit"
+      },
+      "window_open_front_left": {
+        "name": "Vitre avant gauche ouverte"
+      },
+      "window_open_front_right": {
+        "name": "Vitre avant droit ouverte"
+      },
+      "window_open_rear_left": {
+        "name": "Vitre arrière gauche ouverte"
+      },
+      "window_open_rear_right": {
+        "name": "Vitre arrière droit ouverte"
+      },
+      "steering_wheel_heater": {
+        "name": "Chauffage du volant"
+      },
+      "engine": {
+        "name": "Moteur"
+      },
+      "defrost": {
+        "name": "Dégivrage avant"
+      },
+      "connected": {
+        "name": "Connexion au cloud"
+      },
+      "high_beam": {
+        "name": "Feux de route"
+      },
+      "low_beam": {
+        "name": "Feux de croisement"
+      },
+      "position_lamp": {
+        "name": "Feux de position"
+      },
+      "left_turn_signal": {
+        "name": "Clignotant gauche"
+      },
+      "right_turn_signal": {
+        "name": "Clignotant droit"
+      },
+      "any_door_open": {
+        "name": "Une porte ouverte"
+      },
+      "door_front_left": {
+        "name": "Porte avant gauche"
+      },
+      "door_front_right": {
+        "name": "Porte avant droite"
+      },
+      "door_rear_left": {
+        "name": "Porte arrière gauche"
+      },
+      "door_rear_right": {
+        "name": "Porte arrière droite"
+      },
+      "trunk": {
+        "name": "Coffre"
+      },
+      "hood": {
+        "name": "Capot"
+      },
+      "driver_door_unlocked": {
+        "name": "Porte conducteur déverrouillée"
+      },
+      "passenger_door_unlocked": {
+        "name": "Porte passager déverrouillée"
+      },
+      "dc_gun_connected": {
+        "name": "Pistolet DC connecté"
+      },
+      "charging": {
+        "name": "En charge"
+      },
+      "charge_schedule_enabled": {
+        "name": "Plage de charge activée"
+      },
+      "front_left_seat_heating": {
+        "name": "Chauffage du siège avant gauche"
+      },
+      "front_right_seat_heating": {
+        "name": "Chauffage du siège avant droit"
+      },
+      "rear_left_seat_heating": {
+        "name": "Chauffage du siège arrière gauche"
+      },
+      "rear_right_seat_heating": {
+        "name": "Chauffage du siège arrière droit"
+      },
+      "front_left_seat_ventilation": {
+        "name": "Ventilation du siège avant gauche"
+      },
+      "front_right_seat_ventilation": {
+        "name": "Ventilation du siège avant droit"
+      }
+    },
+    "button": {
+      "refresh_vehicle_data": {
+        "name": "Actualiser les données du véhicule"
+      },
+      "flash_lights": {
+        "name": "Appels de phares"
+      },
+      "honk_horn": {
+        "name": "Klaxonner"
+      }
+    },
+    "climate": {
+      "cabin_climate": {
+        "name": "Climatisation de l'habitacle"
+      }
+    },
+    "cover": {
+      "windows": {
+        "name": "Vitres"
+      },
+      "trunk": {
+        "name": "Coffre"
+      }
+    },
+    "lock": {
+      "doors": {
+        "name": "Portes"
+      }
+    },
+    "number": {
+      "charge_limit": {
+        "name": "Limite de charge"
+      },
+      "seat_heating_level_front_left": {
+        "name": "Niveau de chauffage du siège avant gauche"
+      },
+      "seat_heating_level_front_right": {
+        "name": "Niveau de chauffage du siège avant droit"
+      },
+      "seat_heating_level_rear_left": {
+        "name": "Niveau de chauffage du siège arrière gauche"
+      },
+      "seat_heating_level_rear_right": {
+        "name": "Niveau de chauffage du siège arrière droit"
+      },
+      "seat_ventilation_level_front_left": {
+        "name": "Niveau de ventilation du siège avant gauche"
+      },
+      "seat_ventilation_level_front_right": {
+        "name": "Niveau de ventilation du siège avant droit"
+      },
+      "seat_ventilation_level_rear_left": {
+        "name": "Niveau de ventilation du siège arrière gauche"
+      },
+      "seat_ventilation_level_rear_right": {
+        "name": "Niveau de ventilation du siège arrière droit"
+      }
+    },
+    "switch": {
+      "charge_schedule": {
+        "name": "Plage de charge"
+      },
+      "steering_wheel_heating": {
+        "name": "Chauffage du volant"
+      }
+    },
+    "time": {
+      "charge_schedule_start": {
+        "name": "Début de la plage de charge"
+      },
+      "charge_schedule_end": {
+        "name": "Fin de la plage de charge"
+      }
+    }
+  }
+}

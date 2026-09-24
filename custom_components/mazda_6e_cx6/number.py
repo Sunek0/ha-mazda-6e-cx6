@@ -1,0 +1,152 @@
+"""Number platform (charge limit) for the Mazda integration."""
+
+from typing import Any
+
+from homeassistant.components.number import NumberEntity, NumberMode
+from homeassistant.const import PERCENTAGE
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+
+from .coordinator import MazdaDataUpdateCoordinator
+from .entity import MazdaEntity, async_setup_control_entities
+from .runtime_data import MazdaConfigEntry
+
+
+SEAT_LABELS = {"front_left": "Front Left", "front_right": "Front Right"}
+SEAT_FUNCTIONS = {
+    "heating": ("control_seats_heat", "heating_level", "mdi:car-seat-heater"),
+    "ventilation": ("control_seats_wind", "ventilation_level", "mdi:car-seat-cooler"),
+}
+
+
+def supports_charge_limit(vehicle: Any) -> bool:
+    """Return whether the vehicle supports setting the AC charge limit.
+
+    No Mazda 6e / CX-6e exclusion is known yet, so every command-capable
+    vehicle keeps the control. Live verification can add a capability gate
+    here when the function configuration exposes a SOC-set code.
+    """
+    return True
+
+
+def build_control_numbers(
+    coordinator: MazdaDataUpdateCoordinator, vehicle: Any
+) -> list[Any]:
+    """Build the charge limit and seat level numbers for one vehicle."""
+    entities: list[Any] = []
+    if supports_charge_limit(vehicle):
+        entities.append(MazdaChargeLimitNumber(coordinator, vehicle))
+    for seat in SEAT_LABELS:
+        for function in SEAT_FUNCTIONS:
+            entities.append(MazdaSeatLevelNumber(coordinator, vehicle, seat, function))
+    return entities
+
+
+def _set_charge_limit(condition: Any, percentage: int) -> Any:
+    condition.battery.charge_limit_percent = percentage
+    return condition
+
+
+def _set_seat_level(condition: Any, seat: str, field: str, level: int) -> Any:
+    setattr(getattr(condition.seats, seat), field, level)
+    return condition
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: MazdaConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up the charge limit and seat level numbers."""
+    async_setup_control_entities(hass, entry, async_add_entities, build_control_numbers)
+
+
+class MazdaChargeLimitNumber(MazdaEntity, NumberEntity):
+    """Maximum battery state of charge for AC charging."""
+
+    _attr_native_min_value = 60
+    _attr_native_max_value = 100
+    _attr_native_step = 1
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_mode = NumberMode.SLIDER
+    _attr_icon = "mdi:battery-heart"
+
+    def __init__(
+        self, coordinator: MazdaDataUpdateCoordinator, vehicle: Any
+    ) -> None:
+        """Initialize the charge limit number."""
+        super().__init__(coordinator, vehicle)
+        self._attr_unique_id = f"mazda_{vehicle.car_id}_charge_limit"
+        self._attr_translation_key = "charge_limit"
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the configured charge limit."""
+        cond = self.condition
+        return cond.battery.charge_limit_percent if cond else None
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Set the charge limit."""
+        await self.async_send_command(
+            lambda: self.client.control_charge_limit(self._car_id, int(value)),
+            optimistic_update=lambda cond: _set_charge_limit(cond, int(value)),
+        )
+
+
+class MazdaSeatLevelNumber(MazdaEntity, NumberEntity):
+    """Front seat heating or ventilation level (0 = off, 1-3 = level)."""
+
+    _attr_native_min_value = 0
+    _attr_native_max_value = 3
+    _attr_native_step = 1
+    _attr_mode = NumberMode.SLIDER
+
+    def __init__(
+        self,
+        coordinator: MazdaDataUpdateCoordinator,
+        vehicle: Any,
+        seat: str,
+        function: str,
+    ) -> None:
+        """Initialize the seat level number."""
+        super().__init__(coordinator, vehicle)
+        self._seat = seat
+        self._function = function
+        self._field = SEAT_FUNCTIONS[function][1]
+        self._attr_unique_id = (
+            f"mazda_{vehicle.car_id}_seat_{seat}_{function}_control"
+        )
+        self._attr_translation_key = f"seat_{function}_level_{seat}"
+        self._attr_icon = SEAT_FUNCTIONS[function][2]
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the seat heating or ventilation level."""
+        cond = self.condition
+        if not cond:
+            return None
+        return getattr(getattr(cond.seats, self._seat), self._field)
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Set the seat level (0 turns the function off)."""
+        level = max(0, min(3, int(value)))
+        switch = 1 if level > 0 else 0
+        level_arg = level if level > 0 else None
+        if self._seat == "front_left":
+            kwargs: dict[str, int | None] = {
+                "master_switch": switch,
+                "master_level": level_arg,
+            }
+        else:
+            kwargs = {"copilot_switch": switch, "copilot_level": level_arg}
+        method = (
+            self.client.control_seats_heat
+            if self._function == "heating"
+            else self.client.control_seats_wind
+        )
+        await self.async_send_command(
+            lambda: method(self._car_id, **kwargs),
+            optimistic_update=lambda cond: _set_seat_level(
+                cond, self._seat, self._field, level
+            ),
+        )

@@ -1,0 +1,165 @@
+"""Component for the Mazda 6e & CX-6e integration."""
+
+import logging
+import secrets
+from datetime import timedelta
+
+from homeassistant.const import Platform
+from homeassistant.core import HomeAssistant
+
+from .mazda import MazdaClient
+from .const import (
+    CONF_COUNTRY,
+    CONF_ACCESS_TOKEN,
+    CONF_REFRESH_TOKEN,
+    CONF_CAC_TOKEN,
+    CONF_PRIVATE_KEY,
+    CONF_PUBLIC_KEY,
+    CONF_CONTROL_PIN,
+    CONF_DEVICE_ID,
+    CONF_USER_ID,
+    CONF_OS_VERSION,
+    CONF_ENVIRONMENT,
+    CONF_SCAN_INTERVAL,
+    CONF_ENABLE_API_LOGGING,
+    DEFAULT_COUNTRY,
+    DEFAULT_SCAN_INTERVAL,
+    DEFAULT_OS_VERSION,
+    DEFAULT_ENVIRONMENT,
+)
+from .coordinator import MazdaDataUpdateCoordinator
+from .runtime_data import MazdaConfigEntry, MazdaRuntimeData
+
+_LOGGER = logging.getLogger(__name__)
+
+
+def _build_client(entry: MazdaConfigEntry) -> MazdaClient:
+    """Build the Mazda API client for the entry."""
+    client = MazdaClient(
+        country=entry.data.get(CONF_COUNTRY) or DEFAULT_COUNTRY,
+        os_version=entry.options.get(CONF_OS_VERSION, DEFAULT_OS_VERSION),
+        environment=entry.options.get(CONF_ENVIRONMENT, DEFAULT_ENVIRONMENT),
+        enable_api_logging=bool(entry.options.get(CONF_ENABLE_API_LOGGING, False)),
+    )
+    client.access_token = entry.data[CONF_ACCESS_TOKEN]
+    client.refresh_token = entry.data.get(CONF_REFRESH_TOKEN) or None
+    client.cac_token = entry.data.get(CONF_CAC_TOKEN) or None
+    client.user_id = entry.data.get(CONF_USER_ID) or None
+    private_key = entry.data.get(CONF_PRIVATE_KEY) or None
+    if private_key:
+        try:
+            client.set_login_keypair(
+                private_key, entry.data.get(CONF_PUBLIC_KEY) or None
+            )
+        except (ValueError, TypeError) as err:
+            _LOGGER.warning(
+                "Mazda entry %s stores an unusable login private key (%s); "
+                "command signing stays disabled until the next login",
+                entry.entry_id,
+                err,
+            )
+            client.private_key_pem = private_key
+    client.control_pin = (
+        entry.options.get(CONF_CONTROL_PIN)
+        or entry.data.get(CONF_CONTROL_PIN)
+        or None
+    )
+    client.device_id = entry.data.get(CONF_DEVICE_ID) or client.device_id
+    return client
+
+
+def _platforms(entry: MazdaConfigEntry) -> list[Platform]:
+    """Return the entity platforms for an entry."""
+    platforms = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.IMAGE]
+    if entry.data.get(CONF_PRIVATE_KEY):
+        platforms.extend(
+            [
+                Platform.CLIMATE,
+                Platform.LOCK,
+                Platform.COVER,
+                Platform.BUTTON,
+                Platform.NUMBER,
+                Platform.SWITCH,
+                Platform.TIME,
+            ]
+        )
+    return platforms
+
+
+async def async_setup_entry(hass: HomeAssistant, entry: MazdaConfigEntry) -> bool:
+    """Set up Mazda 6e & CX-6e from a config entry."""
+    data_updates = dict(entry.data)
+    if not data_updates.get(CONF_DEVICE_ID):
+        data_updates[CONF_DEVICE_ID] = secrets.token_hex(16)
+    if not data_updates.get(CONF_PUBLIC_KEY):
+        private_key = data_updates.get(CONF_PRIVATE_KEY)
+        if private_key:
+            try:
+                data_updates[CONF_PUBLIC_KEY] = (
+                    MazdaClient.public_key_body_from_private(private_key)
+                )
+            except (ValueError, TypeError) as err:
+                _LOGGER.warning(
+                    "Could not derive the login public key stored in Mazda "
+                    "entry %s: %s",
+                    entry.entry_id,
+                    err,
+                )
+    if data_updates != entry.data:
+        hass.config_entries.async_update_entry(entry, data=data_updates)
+
+    client = _build_client(entry)
+    coordinator = MazdaDataUpdateCoordinator(
+        hass,
+        entry,
+        client,
+        update_interval=timedelta(
+            seconds=entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+        ),
+    )
+
+    # Fetch initial data
+    await coordinator.async_config_entry_first_refresh()
+
+    entry.runtime_data = MazdaRuntimeData(client=client, coordinator=coordinator)
+
+    platforms = _platforms(entry)
+    _LOGGER.debug(
+        "Mazda setting up platforms: %s", [platform.value for platform in platforms]
+    )
+    await hass.config_entries.async_forward_entry_setups(entry, platforms)
+
+    return True
+
+
+async def async_unload_entry(hass: HomeAssistant, entry: MazdaConfigEntry) -> bool:
+    """Unload a config entry."""
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, _platforms(entry))
+
+    if unload_ok:
+        await entry.runtime_data.client.close()
+
+    return unload_ok
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: MazdaConfigEntry) -> None:
+    """Log out the session before removing the entry.
+
+    Best-effort: the logout and the client teardown are wrapped so a network
+    or configuration failure is only logged and never blocks the removal.
+    """
+    if not entry.data.get(CONF_ACCESS_TOKEN):
+        return
+
+    client = None
+    try:
+        client = _build_client(entry)
+        await client.logout()
+    except Exception as err:
+        _LOGGER.warning("Mazda logout on entry removal failed: %s", err)
+    finally:
+        if client is not None:
+            try:
+                await client.close()
+            except Exception as err:
+                _LOGGER.warning("Mazda client close on entry removal failed: %s", err)

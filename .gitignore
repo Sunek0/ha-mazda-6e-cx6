@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+My Changan*.apk
+MAZDA*.apk
+alauncher/
+alauncher-*/
+extracted/
+extracted-*/
+ha-deepal/
+ha-deepal-spain-dec/
+login.md

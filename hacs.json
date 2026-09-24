@@ -1,0 +1,5 @@
+{
+  "name": "Mazda 6e & CX-6e",
+  "homeassistant": "2026.3.0",
+  "country": ["ES", "PT", "GB", "IE", "FR", "BE", "LU", "DE", "AT", "CH", "IT", "GR"]
+}
