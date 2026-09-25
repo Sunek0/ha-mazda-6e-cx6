@@ -47,7 +47,7 @@ class MazdaRefreshButton(MazdaEntity, ButtonEntity):
     async def async_press(self) -> None:
         """Request fresh data and refresh the coordinator."""
         try:
-            await self.client.control_condition_inquiry(self._car_id)
+            await self.coordinator.async_condition_inquiry(self._car_id)
         except MazdaError as err:
             raise HomeAssistantError(f"Mazda refresh command failed: {err}") from err
         await self.coordinator.async_request_refresh()
