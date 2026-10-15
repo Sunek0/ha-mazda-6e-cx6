@@ -7,10 +7,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .const import DOMAIN
 from .coordinator import MazdaDataUpdateCoordinator
 from .mazda import MazdaError, FLASH_HONK_BEE, FLASH_HONK_FLASH
 from .entity import MazdaEntity, async_setup_control_entities
 from .runtime_data import MazdaConfigEntry
+
+# Coordinator is used to centralize the data updates
+PARALLEL_UPDATES = 0
 
 
 async def async_setup_entry(
@@ -30,7 +34,6 @@ async def async_setup_entry(
         ],
     )
 
-
 class MazdaRefreshButton(MazdaEntity, ButtonEntity):
     """Ask the vehicle to report fresh condition data."""
 
@@ -49,9 +52,13 @@ class MazdaRefreshButton(MazdaEntity, ButtonEntity):
         try:
             await self.coordinator.async_condition_inquiry(self._car_id)
         except MazdaError as err:
-            raise HomeAssistantError(f"Mazda refresh command failed: {err}") from err
+            raise HomeAssistantError(
+                f"Mazda refresh command failed: {err}",
+                translation_domain=DOMAIN,
+                translation_key="refresh_command_failed",
+                translation_placeholders={"error": str(err)},
+            ) from err
         await self.coordinator.async_request_refresh()
-
 
 class MazdaFlashLightsButton(MazdaEntity, ButtonEntity):
     """Flash the vehicle lights."""
@@ -73,7 +80,6 @@ class MazdaFlashLightsButton(MazdaEntity, ButtonEntity):
                 self._car_id, FLASH_HONK_FLASH
             )
         )
-
 
 class MazdaHonkHornButton(MazdaEntity, ButtonEntity):
     """Sound the vehicle horn."""

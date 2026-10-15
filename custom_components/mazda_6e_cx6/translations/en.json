@@ -401,5 +401,37 @@
         "name": "Charge schedule end"
       }
     }
+  },
+  "exceptions": {
+    "command_failed": {
+      "message": "The Mazda command failed: {error}"
+    },
+    "climate_command_failed": {
+      "message": "The Mazda climate command failed: {error}"
+    },
+    "refresh_command_failed": {
+      "message": "The Mazda refresh command failed: {error}"
+    },
+    "unsupported_hvac_mode": {
+      "message": "Unsupported HVAC mode: {mode}"
+    },
+    "charge_schedule_unavailable": {
+      "message": "The Mazda charge schedule plan is not available"
+    },
+    "commands_require_client": {
+      "message": "Remote commands require the Mazda client"
+    },
+    "command_queue_busy": {
+      "message": "Another Mazda command for this vehicle is taking too long; try again in a few seconds"
+    },
+    "mqtt_controls_read_only": {
+      "message": "MQTT vehicles are read-only; enable the experimental MQTT controls option first"
+    },
+    "command_result_failed": {
+      "message": "Mazda command failed with result code {code}: {message}"
+    },
+    "command_result_failed_unreachable": {
+      "message": "Mazda command failed with result code {code}: {message} (the vehicle did not accept the command; it may be offline or busy, try again when it is awake)"
+    }
   }
 }

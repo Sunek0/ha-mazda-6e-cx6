@@ -26,6 +26,10 @@ from .coordinator import MazdaDataUpdateCoordinator
 from .entity import MazdaEntity
 from .runtime_data import MazdaConfigEntry
 
+# Coordinator is used to centralize the data updates
+PARALLEL_UPDATES = 0
+
+
 _LOGGER = logging.getLogger(__name__)
 
 ASSETS_DIR = Path(__file__).parent / "assets"
@@ -49,13 +53,11 @@ _MODEL_ASSETS = (
     ("S07", "cx6e"),
 )
 
-
 def _normalize(value: str | None) -> str:
     """Upper-case alphanumerics of a vehicle name, for containment checks."""
     return "".join(
         character for character in (value or "").upper() if character.isalnum()
     )
-
 
 def vehicle_image_asset(
     series_name: str | None = None,
@@ -86,7 +88,6 @@ def vehicle_image_asset(
         return ASSETS_DIR / f"vehicle_{model}.svg"
     return GENERIC_ASSET
 
-
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: MazdaConfigEntry,
@@ -105,7 +106,6 @@ async def async_setup_entry(
     async_add_entities(
         MazdaVehicleImage(coordinator, vehicle) for vehicle in coordinator.vehicles
     )
-
 
 class MazdaVehicleImage(MazdaEntity, ImageEntity):
     """Vehicle photo with a bundled per-model fallback.

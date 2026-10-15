@@ -52,10 +52,16 @@ from mazda.endpoints import (
     MAZDA_DEPARTURE_DELETE,
     MAZDA_DEPARTURE_ENABLED,
     MAZDA_DEPARTURE_MODIFY_PLAN,
+    MAZDA_DEPARTURE_PLAN_LIST,
     MAZDA_DEPARTURE_VALIDITY,
     MAZDA_GET_MY_CARS,
     MAZDA_GET_SECURITY_CODE_STATUS,
     MAZDA_GET_SERIAL_NO,
+    MAZDA_HEATING_PLAN_ADD,
+    MAZDA_HEATING_PLAN_AVAILABILITY,
+    MAZDA_HEATING_PLAN_LIST,
+    MAZDA_HEATING_PLAN_REMOVE,
+    MAZDA_HEATING_PLAN_UPDATE,
     MAZDA_CHARGE_MODIFY_PLAN,
     MAZDA_CHARGE_PERCENTAGE,
     MAZDA_CONTROL_DOORS,
@@ -1537,6 +1543,98 @@ async def test_get_mqtt_token_without_user_id_raises():
 
 
 @pytest.mark.asyncio
+async def test_get_mqtt_token_is_reused_inside_the_ttl():
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        return httpx.Response(
+            200, json={"success": True, "code": "0", "data": {"authToken": "tok-1"}}
+        )
+
+    client = _client(handler)
+    client.access_token = "test_token_123"
+    client.user_id = "user-1"
+    first = await client.get_mqtt_token()
+    second = await client.get_mqtt_token()
+    forced = await client.get_mqtt_token(force=True)
+    await client.close()
+
+    assert first == second == forced == "tok-1"
+    assert len(calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_get_mqtt_token_refetches_when_the_window_closed():
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        return httpx.Response(
+            200, json={"success": True, "code": "0", "data": {"authToken": "tok-1"}}
+        )
+
+    client = _client(handler)
+    client.access_token = "test_token_123"
+    client.user_id = "user-1"
+    client.mqtt_token_ttl = 0.0
+    await client.get_mqtt_token()
+    await client.get_mqtt_token()
+    await client.close()
+
+    assert len(calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_get_mqtt_token_failure_is_not_cached():
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        return httpx.Response(
+            200,
+            json={"success": False, "code": "HW_1_1_01_001", "msg": "nope"},
+        )
+
+    client = _client(handler)
+    client.access_token = "test_token_123"
+    client.user_id = "user-1"
+    with pytest.raises(MazdaAPIError):
+        await client.get_mqtt_token()
+    with pytest.raises(MazdaAPIError):
+        await client.get_mqtt_token()
+    await client.close()
+
+    assert len(calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_logout_invalidates_the_cached_mqtt_token():
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == MAZDA_LOGOUT:
+            return httpx.Response(
+                200, json={"success": True, "code": "0", "data": None}
+            )
+        calls.append(request.url.path)
+        return httpx.Response(
+            200, json={"success": True, "code": "0", "data": {"authToken": "tok-1"}}
+        )
+
+    client = _client(handler)
+    client.access_token = "test_token_123"
+    client.user_id = "user-1"
+    await client.get_mqtt_token()
+    await client.logout()
+    client.access_token = "test_token_123"
+    await client.get_mqtt_token()
+    await client.close()
+
+    assert len(calls) == 2
+
+
+@pytest.mark.asyncio
 async def test_ca_gateway_error_exposes_code():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
@@ -1593,6 +1691,73 @@ async def test_get_vehicle_capabilities_maps_max_codes():
     assert capabilities.seats["front_left"].heating is True
     assert capabilities.raw_codes[-1] == "#ota"
     assert capabilities.has_fuel is False
+
+
+def test_vehicle_capabilities_type_the_extended_function_codes():
+    capabilities = VehicleCapabilities.from_codes(
+        [
+            "ElectricTailWingSW",
+            "#airPurification",
+            "ACAirCirculatorSW",
+            "#windshieldWiperHeat",
+            "#windowVentilationBT",
+            "TrunkAutoSW",
+            "#ota",
+        ]
+    )
+
+    assert capabilities.has_spoiler is True
+    assert capabilities.has_air_purifier is True
+    assert capabilities.has_air_recirculation is True
+    assert capabilities.has_wiper_heating is True
+    assert capabilities.has_window_ventilation is True
+    assert capabilities.has_power_tailgate is True
+    assert capabilities.raw_codes[0] == "ElectricTailWingSW"
+
+
+def test_vehicle_capabilities_ignore_unknown_function_codes():
+    capabilities = VehicleCapabilities.from_codes(["#ota", "ACAirPurifierSWextra"])
+
+    assert capabilities.has_spoiler is False
+    assert capabilities.has_air_purifier is False
+    assert capabilities.has_air_recirculation is False
+    assert capabilities.has_wiper_heating is False
+    assert capabilities.has_window_ventilation is False
+    assert capabilities.has_power_tailgate is False
+    assert capabilities.raw_codes[-1] == "ACAirPurifierSWextra"
+
+
+@pytest.mark.asyncio
+async def test_get_vehicle_capabilities_maps_the_extended_codes():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "success": True,
+                "data": {
+                    "confList": [
+                        "ElectricTailWingSW",
+                        "#airPurification",
+                        "#windshieldWiperHeat",
+                        "#windowVentilationBT",
+                        "TrunkAutoSW",
+                    ]
+                },
+            },
+        )
+
+    client = _client(handler)
+    client.access_token = "test_token_123"
+    capabilities = await client.get_vehicle_capabilities("car-1")
+    await client.close()
+
+    assert capabilities is not None
+    assert capabilities.has_spoiler is True
+    assert capabilities.has_air_purifier is True
+    assert capabilities.has_wiper_heating is True
+    assert capabilities.has_window_ventilation is True
+    assert capabilities.has_power_tailgate is True
+    assert capabilities.has_air_recirculation is False
 
 
 @pytest.mark.asyncio
@@ -2963,6 +3128,103 @@ async def test_charge_plan_family_uses_serial_type_2():
 
 
 @pytest.mark.asyncio
+async def test_plan_queries_return_the_raw_lists():
+    captured: list[tuple[str, dict]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append((request.url.path, json.loads(request.content)))
+        if request.url.path == MAZDA_DEPARTURE_PLAN_LIST:
+            data = [{"planId": 7, "planType": 1, "isValid": 1}]
+        else:
+            data = [{"planId": "h-1", "isValid": 0, "startData": "0700"}]
+        return httpx.Response(200, json={"success": True, "code": "0", "data": data})
+
+    client = _client(handler)
+    client.access_token = "test_token_123"
+    departure = await client.get_departure_plans("car-1")
+    heating = await client.get_heating_plans("car-1")
+    await client.close()
+
+    assert departure == [{"planId": 7, "planType": 1, "isValid": 1}]
+    assert heating == [{"planId": "h-1", "isValid": 0, "startData": "0700"}]
+    assert captured == [
+        (MAZDA_DEPARTURE_PLAN_LIST, {"vehicleId": "car-1"}),
+        (MAZDA_HEATING_PLAN_LIST, {"vehicleId": "car-1"}),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_heating_plan_family_signs_with_serial_type_2():
+    private_pem, public_key = _login_keypair()
+    captured: dict = {}
+    client = _client(_command_handler(public_key, captured))
+    client.access_token = "test_token_123"
+    client.private_key_pem = private_pem
+
+    await client.control_heating_plan_add("car-1", "0800", 2)
+    body = captured["body"]
+    assert captured["path"] == MAZDA_HEATING_PLAN_ADD
+    assert body["command"] == "COMMAND_HEATING_PLANS_ADD"
+    assert body["endData"] == "0800"
+    assert body["planType"] == 2
+    assert body["seriralNo"] == "SN123"
+    _verify_signature(
+        body,
+        "endData=0800&planType=2&seriralNo=SN123&vehicleId=car-1",
+        public_key,
+    )
+
+    await client.control_heating_plan_update("car-1", "h-1", "0900", 1)
+    assert captured["path"] == MAZDA_HEATING_PLAN_UPDATE
+    assert captured["body"]["planId"] == "h-1"
+
+    await client.control_heating_plan_remove("car-1", "h-1")
+    assert captured["path"] == MAZDA_HEATING_PLAN_REMOVE
+    assert captured["body"]["command"] == "COMMAND_HEATING_PLANS_DELETE"
+
+    await client.control_heating_plan_availability("car-1", "h-1", True)
+    assert captured["path"] == MAZDA_HEATING_PLAN_AVAILABILITY
+    assert captured["body"]["enabled"] is True
+    await client.close()
+
+    assert captured["serial_bodies"] == [{"type": "2"}] * 4
+
+
+@pytest.mark.asyncio
+async def test_heating_plan_command_surfaces_the_gateway_rejection():
+    private_pem, public_key = _login_keypair()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == MAZDA_GET_SERIAL_NO:
+            return httpx.Response(
+                200,
+                json={
+                    "success": True,
+                    "code": "0",
+                    "data": _encrypted_serial(public_key, "SN123"),
+                },
+            )
+        return httpx.Response(
+            200,
+            json={
+                "success": False,
+                "code": "APP_1_1_05_001",
+                "msg": "Operation Failed",
+            },
+        )
+
+    client = _client(handler)
+    client.access_token = "test_token_123"
+    client.private_key_pem = private_pem
+    with pytest.raises(MazdaAPIError) as err:
+        await client.control_heating_plan_remove("car-1", "h-1")
+    await client.close()
+
+    assert err.value.code == "APP_1_1_05_001"
+    assert "Operation Failed" in str(err.value)
+
+
+@pytest.mark.asyncio
 async def test_seats_heat_omits_unused_positions():
     private_pem, public_key = _login_keypair()
     captured: dict = {}
@@ -3019,6 +3281,53 @@ async def test_api_error_message_includes_gateway_code():
 
     assert "HW_1_1_01_001" in str(err.value)
     assert err.value.code == "HW_1_1_01_001"
+
+
+@pytest.mark.asyncio
+async def test_charge_schedule_disabled_by_is_valid():
+    payload = {
+        "charge": {
+            "chargePlanList": [
+                {
+                    "planId": 42,
+                    "planType": 1,
+                    "isValid": 0,
+                    "startTime": "2300",
+                    "endTime": "0700",
+                    "startSwitch": 1,
+                    "endSwitch": 1,
+                }
+            ]
+        }
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"success": True, "code": "0", "data": payload})
+
+    client = _client(handler)
+    client.access_token = "test_token_123"
+    condition = await client.get_vehicle_condition("car-1")
+    await client.close()
+
+    assert condition.battery.charge_schedule_enabled is False
+    assert condition.battery.charge_schedule_start == "2300"
+    assert condition.battery.charge_schedule_end == "0700"
+    assert condition.battery.charge_plan_id == "42"
+
+
+@pytest.mark.asyncio
+async def test_charge_schedule_enabled_by_is_valid_without_switches():
+    payload = {"charge": {"chargePlanList": [{"isValid": 1}]}}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"success": True, "code": "0", "data": payload})
+
+    client = _client(handler)
+    client.access_token = "test_token_123"
+    condition = await client.get_vehicle_condition("car-1")
+    await client.close()
+
+    assert condition.battery.charge_schedule_enabled is True
 
 
 @pytest.mark.asyncio
@@ -3415,6 +3724,35 @@ async def test_mqtt_config_fallback_can_be_disabled():
         await client.get_mqtt_config("car-1")
     await client.close()
     assert len(paths) == 1
+
+
+@pytest.mark.asyncio
+async def test_http_429_maps_to_rate_limit_with_retry_after():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, headers={"Retry-After": "60"})
+
+    client = _client(handler)
+    client.access_token = "test_token_123"
+    with pytest.raises(MazdaRateLimitError) as err:
+        await client.get_vehicles()
+    await client.close()
+
+    assert err.value.status_code == 429
+    assert err.value.retry_after == 60.0
+
+
+@pytest.mark.asyncio
+async def test_http_429_without_a_usable_retry_after():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, headers={"Retry-After": "soon"})
+
+    client = _client(handler)
+    client.access_token = "test_token_123"
+    with pytest.raises(MazdaRateLimitError) as err:
+        await client.get_vehicles()
+    await client.close()
+
+    assert err.value.retry_after is None
 
 
 @pytest.mark.asyncio

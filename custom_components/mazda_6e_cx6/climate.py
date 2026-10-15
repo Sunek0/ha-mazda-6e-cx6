@@ -15,10 +15,14 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, MANUFACTURER, DEFAULT_MODEL
+from .const import DOMAIN
 from .coordinator import MazdaDataUpdateCoordinator
 from .mazda import MazdaError, MazdaClient
 from .entity import mqtt_controls_enabled
 from .runtime_data import MazdaConfigEntry
+
+# Coordinator is used to centralize the data updates
+PARALLEL_UPDATES = 0
 
 
 async def async_setup_entry(
@@ -38,7 +42,6 @@ async def async_setup_entry(
         MazdaCabinClimateEntity(coordinator, vehicle)
         for vehicle in coordinator.vehicles
     )
-
 
 class MazdaCabinClimateEntity(
     CoordinatorEntity[MazdaDataUpdateCoordinator], ClimateEntity
@@ -114,7 +117,12 @@ class MazdaCabinClimateEntity(
         if hvac_mode == HVACMode.HEAT_COOL:
             await self.async_turn_on()
             return
-        raise HomeAssistantError(f"Unsupported HVAC mode: {hvac_mode}")
+        raise HomeAssistantError(
+            f"Unsupported HVAC mode: {hvac_mode}",
+            translation_domain=DOMAIN,
+            translation_key="unsupported_hvac_mode",
+            translation_placeholders={"mode": str(hvac_mode)},
+        )
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
         """Set the target temperature."""
@@ -135,7 +143,9 @@ class MazdaCabinClimateEntity(
         if self._read_only:
             raise HomeAssistantError(
                 "MQTT vehicles are read-only; enable the experimental MQTT "
-                "controls option first"
+                "controls option first",
+                translation_domain=DOMAIN,
+                translation_key="mqtt_controls_read_only",
             )
 
         def _optimistic(condition: Any) -> Any:
@@ -155,4 +165,9 @@ class MazdaCabinClimateEntity(
         except HomeAssistantError:
             raise
         except MazdaError as err:
-            raise HomeAssistantError(f"Mazda climate command failed: {err}") from err
+            raise HomeAssistantError(
+                f"Mazda climate command failed: {err}",
+                translation_domain=DOMAIN,
+                translation_key="climate_command_failed",
+                translation_placeholders={"error": str(err)},
+            ) from err

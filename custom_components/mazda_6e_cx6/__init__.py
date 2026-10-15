@@ -6,6 +6,7 @@ from datetime import timedelta
 
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.httpx_client import get_async_client
 
 from .mazda import MazdaClient
 from .const import (
@@ -33,13 +34,18 @@ from .runtime_data import MazdaConfigEntry, MazdaRuntimeData
 _LOGGER = logging.getLogger(__name__)
 
 
-def _build_client(entry: MazdaConfigEntry) -> MazdaClient:
-    """Build the Mazda API client for the entry."""
+def _build_client(hass: HomeAssistant, entry: MazdaConfigEntry) -> MazdaClient:
+    """Build the Mazda API client for the entry.
+
+    The client shares Home Assistant's HTTP session; the SDK keeps an injected
+    client open and leaves closing it to Home Assistant.
+    """
     client = MazdaClient(
         country=entry.data.get(CONF_COUNTRY) or DEFAULT_COUNTRY,
         os_version=entry.options.get(CONF_OS_VERSION, DEFAULT_OS_VERSION),
         environment=entry.options.get(CONF_ENVIRONMENT, DEFAULT_ENVIRONMENT),
         enable_api_logging=bool(entry.options.get(CONF_ENABLE_API_LOGGING, False)),
+        httpx_client=get_async_client(hass),
     )
     client.access_token = entry.data[CONF_ACCESS_TOKEN]
     client.refresh_token = entry.data.get(CONF_REFRESH_TOKEN) or None
@@ -108,7 +114,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: MazdaConfigEntry) -> boo
     if data_updates != entry.data:
         hass.config_entries.async_update_entry(entry, data=data_updates)
 
-    client = _build_client(entry)
+    client = _build_client(hass, entry)
     coordinator = MazdaDataUpdateCoordinator(
         hass,
         entry,
@@ -153,7 +159,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: MazdaConfigEntry) -> No
 
     client = None
     try:
-        client = _build_client(entry)
+        client = _build_client(hass, entry)
         await client.logout()
     except Exception as err:
         _LOGGER.warning("Mazda logout on entry removal failed: %s", err)

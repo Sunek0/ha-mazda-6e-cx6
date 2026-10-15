@@ -41,12 +41,18 @@ from mazda.endpoints import (
     MAZDA_DEPARTURE_DELETE,
     MAZDA_DEPARTURE_ENABLED,
     MAZDA_DEPARTURE_MODIFY_PLAN,
+    MAZDA_DEPARTURE_PLAN_LIST,
     MAZDA_DEPARTURE_VALIDITY,
     MAZDA_GET_FUNCTION_CONFIG,
     MAZDA_GET_MY_CARS,
     MAZDA_GET_SERIAL_NO,
     MAZDA_GET_SECURITY_CODE_STATUS,
     MAZDA_GET_VEHICLE_CONDITION,
+    MAZDA_HEATING_PLAN_ADD,
+    MAZDA_HEATING_PLAN_AVAILABILITY,
+    MAZDA_HEATING_PLAN_LIST,
+    MAZDA_HEATING_PLAN_REMOVE,
+    MAZDA_HEATING_PLAN_UPDATE,
     MAZDA_LOGIN_BY_EMAIL_CODE,
     MAZDA_LOGIN_BY_EMAIL_CODE_V2,
     MAZDA_LOGIN_BY_EMAIL_PASSWORD,
@@ -65,6 +71,7 @@ from mazda.exceptions import (
     MazdaConnectionError,
     MazdaError,
     MazdaRateLimitError,
+    parse_retry_after,
 )
 from mazda.redact import redact_for_log, safe_headers
 from mazda.models import (
@@ -152,6 +159,10 @@ _AUTH_ERROR_CODES = {
 MAZDA_REFRESH_THROTTLE_SECONDS = 1800.0
 CAR_CONTROL_REFRESH_THROTTLE_SECONDS = 3300.0
 
+# Account MQTT auth-token reuse window; the CA gateway token is account level, so
+# a refresh cycle with several vehicles asks for it once.
+MAZDA_MQTT_TOKEN_TTL_SECONDS = 60.0
+
 
 def _is_auth_failure(code: Any) -> bool:
     code_str = str(code)
@@ -209,6 +220,20 @@ def _fuel_range_km(fuel: dict[str, Any]) -> Optional[int]:
     return None
 
 
+def _charge_plan_enabled(charge_plan: dict[str, Any]) -> bool:
+    """Return whether the charge schedule of a plan entry is enabled.
+
+    The live 6e toggles the schedule with the plan ``isValid`` flag through
+    ``charge/validity`` while ``startSwitch``/``endSwitch`` stay ``1``, so the
+    flag wins when present; the switch pair remains the fallback for payloads
+    without it.
+    """
+    valid = charge_plan.get("isValid")
+    if valid is not None:
+        return bool(_as_int(valid))
+    return charge_plan.get("startSwitch") == 1 and charge_plan.get("endSwitch") == 1
+
+
 def _is_charge_connection(value: Any) -> bool:
     """Return whether a charge connection state means a connected gun.
 
@@ -259,6 +284,7 @@ class MazdaClient:
         tsp_token_source: str = "access",
         environment: str = DEFAULT_MAZDA_ENVIRONMENT,
         mqtt_config_fallback: bool = True,
+        mqtt_token_ttl: float = MAZDA_MQTT_TOKEN_TTL_SECONDS,
         mqtt_client_id: Optional[str] = None,
         mqtt_username: Optional[str] = None,
         mqtt_keepalive: float = MQTT_DEFAULT_KEEPALIVE,
@@ -292,6 +318,9 @@ class MazdaClient:
         self.app_id = environment_config.app_id
         self._gateway_prefix = environment_config.gateway_prefix
         self.mqtt_config_fallback = mqtt_config_fallback
+        self.mqtt_token_ttl = mqtt_token_ttl
+        self._mqtt_token: Optional[str] = None
+        self._mqtt_token_expires_at: float = 0.0
         self.mqtt_client_id = mqtt_client_id
         self.mqtt_username = mqtt_username
         self.mqtt_keepalive = mqtt_keepalive
@@ -469,6 +498,13 @@ class MazdaClient:
         except httpx.RequestError as exc:
             logger.error("Network error requesting %s: %s", url, exc)
             raise MazdaConnectionError(f"Failed to connect to Mazda API: {exc}") from exc
+
+        if response.status_code == 429:
+            raise MazdaRateLimitError(
+                "Mazda rate limit: HTTP 429.",
+                status_code=429,
+                retry_after=parse_retry_after(response.headers.get("Retry-After")),
+            )
 
         if response.status_code in (401, 403):
             raise MazdaAuthError(
@@ -707,6 +743,7 @@ class MazdaClient:
             self.cac_token = None
             self.rc_token = None
             self.access_token_expires_at = None
+            self._invalidate_mqtt_token()
 
     @staticmethod
     def _jwt_expiry(token: Optional[str]) -> Optional[int]:
@@ -787,6 +824,7 @@ class MazdaClient:
             self.ca_user_id = data.get("caUserId") or self.ca_user_id
             self.cac_user_id = data.get("cacUserId") or self.cac_user_id
             self._log_session_fields()
+            self._invalidate_mqtt_token()
 
             if data.get("cacToken"):
                 logger.info("Mazda token refresh returned a new CAC token")
@@ -892,6 +930,29 @@ class MazdaClient:
         )
         return None
 
+    async def get_departure_plans(self, vehicle_id: str) -> list[dict[str, Any]]:
+        """Fetch the departure plans the gateway stores for a vehicle.
+
+        The app's ``reservationTravelList`` posts a map body and returns the
+        entries; the builder method is VMP-extracted, so the body key ships as
+        ``vehicleId`` until the live verification confirms it.
+        """
+        data = await self._request(
+            MAZDA_DEPARTURE_PLAN_LIST,
+            json_data={"vehicleId": vehicle_id},
+            auth_required=True,
+        )
+        return data if isinstance(data, list) else []
+
+    async def get_heating_plans(self, vehicle_id: str) -> list[dict[str, Any]]:
+        """Fetch the battery heating plans the gateway stores for a vehicle."""
+        data = await self._request(
+            MAZDA_HEATING_PLAN_LIST,
+            json_data={"vehicleId": vehicle_id},
+            auth_required=True,
+        )
+        return data if isinstance(data, list) else []
+
     async def get_vehicle_condition(
         self, vehicle_id: str, vin: Optional[str] = None
     ) -> VehicleCondition:
@@ -982,10 +1043,7 @@ class MazdaClient:
             dc_charge_current_a=_as_float(charge.get("dcChargeCurrent")),
             remaining_charge_time_min=remaining_charge_time,
             charge_limit_percent=_as_int(charge.get("maxSocPercent")),
-            charge_schedule_enabled=(
-                charge_plan.get("startSwitch") == 1
-                and charge_plan.get("endSwitch") == 1
-            ),
+            charge_schedule_enabled=_charge_plan_enabled(charge_plan),
             charge_schedule_start=(
                 str(charge_plan["startTime"])
                 if charge_plan.get("startTime") is not None
@@ -1187,12 +1245,31 @@ class MazdaClient:
             raise MazdaAPIError("Unexpected MQTT configuration response.")
         return data
 
-    async def get_mqtt_token(self) -> str:
-        """Exchange the account user id for an MQTT auth token."""
+    def _invalidate_mqtt_token(self) -> None:
+        """Drop the cached MQTT auth token (rejected, or the session changed)."""
+        self._mqtt_token = None
+        self._mqtt_token_expires_at = 0.0
+
+    async def get_mqtt_token(self, force: bool = False) -> str:
+        """Exchange the account user id for an MQTT auth token.
+
+        The token is account level and is reused within ``mqtt_token_ttl`` (one
+        minute by default), so a refresh cycle with several vehicles asks the CA
+        gateway once instead of once per MQTT session. ``force`` bypasses the
+        cache after a rejection, and a failed fetch never leaves a stale value
+        behind.
+        """
         if not self.user_id:
             raise MazdaAPIError(
                 "MQTT telemetry requires the account user id; log in again."
             )
+        if (
+            not force
+            and self._mqtt_token is not None
+            and time.monotonic() < self._mqtt_token_expires_at
+        ):
+            return self._mqtt_token
+        self._invalidate_mqtt_token()
         data = await self._request(
             MAZDA_CA_GET_AUTH_TOKEN,
             json_data={"userId": self.user_id},
@@ -1201,7 +1278,9 @@ class MazdaClient:
         )
         if not isinstance(data, dict) or not data.get("authToken"):
             raise MazdaAPIError("MQTT auth response did not include authToken.")
-        return str(data["authToken"])
+        self._mqtt_token = str(data["authToken"])
+        self._mqtt_token_expires_at = time.monotonic() + self.mqtt_token_ttl
+        return self._mqtt_token
 
     async def mqtt_condition(
         self, vehicle_id: str, vin: Optional[str] = None
@@ -1337,6 +1416,9 @@ class MazdaClient:
             _session_present, reason_code = parse_connack(first, body)
             if reason_code != 0:
                 reason = MQTT_CONNACK_REASONS.get(reason_code, "unknown reason code")
+                # A rejected token must not survive the reuse window; force a
+                # fresh fetch on the next attempt.
+                self._invalidate_mqtt_token()
                 raise MazdaAPIError(
                     "MQTT broker rejected connection: "
                     f"reason code {reason_code} ({reason})"
@@ -2039,6 +2121,99 @@ class MazdaClient:
                 "command": "COMMAND_TRAVELPLAN_STARTSTOPPINGPLANNOW",
                 "enabled": enabled,
                 "planId": int(plan_id),
+            },
+            serial_type=serial_type,
+            require_rc_token=require_rc_token,
+            sign_omit_keys={"command", "rcToken"},
+        )
+
+    async def control_heating_plan_add(
+        self,
+        vehicle_id: str,
+        end_data: str,
+        plan_type: int = 1,
+        serial_type: str = "2",
+        require_rc_token: bool = False,
+    ) -> str:
+        """Add a battery heating plan (optional command).
+
+        ``endData`` and ``planType`` mirror the app's ``AddheatingPlan`` payload.
+        The serial type defaults to the charge family (``"2"``); the app caller
+        is VMP-extracted, so it stays parameterised until a live check confirms it.
+        """
+        return await self._signed_command(
+            path=MAZDA_HEATING_PLAN_ADD,
+            vehicle_id=vehicle_id,
+            payload={
+                "command": "COMMAND_HEATING_PLANS_ADD",
+                "endData": end_data,
+                "planType": plan_type,
+            },
+            serial_type=serial_type,
+            require_rc_token=require_rc_token,
+            sign_omit_keys={"command", "rcToken"},
+        )
+
+    async def control_heating_plan_update(
+        self,
+        vehicle_id: str,
+        plan_id: str,
+        end_data: str,
+        plan_type: int = 1,
+        serial_type: str = "2",
+        require_rc_token: bool = False,
+    ) -> str:
+        """Update a battery heating plan (optional command)."""
+        return await self._signed_command(
+            path=MAZDA_HEATING_PLAN_UPDATE,
+            vehicle_id=vehicle_id,
+            payload={
+                "command": "COMMAND_HEATING_PLANS_UPDATE",
+                "endData": end_data,
+                "planId": str(plan_id),
+                "planType": plan_type,
+            },
+            serial_type=serial_type,
+            require_rc_token=require_rc_token,
+            sign_omit_keys={"command", "rcToken"},
+        )
+
+    async def control_heating_plan_remove(
+        self,
+        vehicle_id: str,
+        plan_id: str,
+        serial_type: str = "2",
+        require_rc_token: bool = False,
+    ) -> str:
+        """Remove a battery heating plan (optional command)."""
+        return await self._signed_command(
+            path=MAZDA_HEATING_PLAN_REMOVE,
+            vehicle_id=vehicle_id,
+            payload={
+                "command": "COMMAND_HEATING_PLANS_DELETE",
+                "planId": str(plan_id),
+            },
+            serial_type=serial_type,
+            require_rc_token=require_rc_token,
+            sign_omit_keys={"command", "rcToken"},
+        )
+
+    async def control_heating_plan_availability(
+        self,
+        vehicle_id: str,
+        plan_id: str,
+        enabled: bool,
+        serial_type: str = "2",
+        require_rc_token: bool = False,
+    ) -> str:
+        """Enable or disable a battery heating plan (optional command)."""
+        return await self._signed_command(
+            path=MAZDA_HEATING_PLAN_AVAILABILITY,
+            vehicle_id=vehicle_id,
+            payload={
+                "command": "COMMAND_HEATING_PLANS_AVAILABILITY",
+                "enabled": enabled,
+                "planId": str(plan_id),
             },
             serial_type=serial_type,
             require_rc_token=require_rc_token,

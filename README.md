@@ -89,6 +89,8 @@ Open **Settings > Devices & services > Mazda 6e & CX-6e > Configure** to change 
 
 - Email and password login, with the email verification code flow as an alternative, automatic token
   refresh and a reauthentication flow.
+- The account vehicle list is re-checked at most every ten minutes, so a vehicle added to or
+  removed from the account appears (or disappears) without reloading the entry by hand.
 - Integration options for the scan interval, API logging, the regional environment and the declared
   Android version.
 
@@ -126,6 +128,8 @@ Open **Settings > Devices & services > Mazda 6e & CX-6e > Configure** to change 
 
 - **"Authentication failed"**: check the email and password, or request a new verification code.
   Repeated failures can rate-limit the account; wait before retrying.
+- **Rate limited by the gateway**: the integration defers the next refresh using the gateway's
+  `Retry-After` when it is provided, and never polls sooner than the configured scan interval.
 - **No entities**: the account may have no vehicle linked, or the vehicle reports a model the
   integration does not know; telemetry and the generic image still work.
 - **"Remote control PIN is not set" although a PIN is configured in Home Assistant**: the PIN was

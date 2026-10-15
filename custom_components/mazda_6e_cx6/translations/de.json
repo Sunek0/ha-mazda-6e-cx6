@@ -401,5 +401,37 @@
         "name": "Ende Ladezeitplan"
       }
     }
+  },
+  "exceptions": {
+    "command_failed": {
+      "message": "Der Mazda-Befehl ist fehlgeschlagen: {error}"
+    },
+    "climate_command_failed": {
+      "message": "Der Mazda-Klimabefehl ist fehlgeschlagen: {error}"
+    },
+    "refresh_command_failed": {
+      "message": "Der Mazda-Aktualisierungsbefehl ist fehlgeschlagen: {error}"
+    },
+    "unsupported_hvac_mode": {
+      "message": "Nicht unterstützter Klimamodus: {mode}"
+    },
+    "charge_schedule_unavailable": {
+      "message": "Der Mazda-Ladezeitplan ist nicht verfügbar"
+    },
+    "commands_require_client": {
+      "message": "Fernbefehle erfordern den Mazda-Client"
+    },
+    "command_queue_busy": {
+      "message": "Ein weiterer Mazda-Befehl für dieses Fahrzeug dauert zu lange; versuche es in einigen Sekunden erneut"
+    },
+    "mqtt_controls_read_only": {
+      "message": "MQTT-Fahrzeuge sind schreibgeschützt; aktiviere zuerst die experimentelle MQTT-Steuerungsoption"
+    },
+    "command_result_failed": {
+      "message": "Mazda-Befehl mit Ergebniscode {code} fehlgeschlagen: {message}"
+    },
+    "command_result_failed_unreachable": {
+      "message": "Mazda-Befehl mit Ergebniscode {code} fehlgeschlagen: {message} (das Fahrzeug hat den Befehl nicht angenommen; es ist möglicherweise offline oder beschäftigt, versuche es erneut, wenn es wach ist)"
+    }
   }
 }

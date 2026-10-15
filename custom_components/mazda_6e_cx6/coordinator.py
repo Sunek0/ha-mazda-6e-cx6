@@ -5,7 +5,7 @@ import logging
 import time
 from collections.abc import Awaitable, Callable
 from datetime import timedelta
-from typing import Any
+from typing import Any, NoReturn
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -19,6 +19,7 @@ from .mazda import (
     MazdaAuthError,
     MazdaClient,
     MazdaError,
+    MazdaRateLimitError,
     Vehicle,
     VehicleCapabilities,
     VehicleCondition,
@@ -40,21 +41,35 @@ _STATELESS_COMMAND_TIMEOUT = 15.0
 _OPTIMISTIC_CONFIRM_TIMEOUT = 15.0
 _CONDITION_FETCH_INTERVAL = 5.0
 _OPTIMISTIC_HOLD_SECONDS = 120.0
+_VEHICLE_REFRESH_INTERVAL = 600.0
 _CA_TOKEN_ERROR_CODES = {"APIGW_-1_7_01_004", "APIGW_1_7_02_001"}
 
 
-def _command_failure_message(result: CommandResult) -> str:
-    """Build the error message for a failed command result."""
+def _raise_command_failure(result: CommandResult) -> NoReturn:
+    """Raise the translated error for a failed command result."""
+    unreachable = "TBOX_" in (result.error_message or "")
     message = (
         f"Mazda command failed with result code {result.code}: "
         f"{result.error_message}"
     )
-    if "TBOX_" in (result.error_message or ""):
+    if unreachable:
         message += (
             " (the vehicle did not accept the command; it may be "
             "offline or busy, try again when it is awake)"
         )
-    return message
+    raise HomeAssistantError(
+        message,
+        translation_domain=DOMAIN,
+        translation_key=(
+            "command_result_failed_unreachable"
+            if unreachable
+            else "command_result_failed"
+        ),
+        translation_placeholders={
+            "code": str(result.code),
+            "message": str(result.error_message),
+        },
+    )
 
 
 def _diff_paths(before: Any, after: Any, prefix: str = "") -> dict[str, Any]:
@@ -103,15 +118,54 @@ class MazdaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, VehicleConditio
         self.entry = entry
         self.client = client
         self.vehicles: list[Vehicle] = []
+        self._last_vehicle_refresh: float = 0.0
         self._command_locks: dict[str, asyncio.Lock] = {}
         self._optimistic_holds: dict[str, dict[str, Any]] = {}
         self._background_tasks: set[asyncio.Task] = set()
         self._capabilities: dict[str, VehicleCapabilities | None] = {}
 
+    async def _async_maybe_refresh_vehicles(self) -> None:
+        """Refresh the account vehicle list and reload when it changed.
+
+        The list changes rarely and the account is rate limited, so it is
+        re-checked at most every ten minutes. A failed or empty refresh keeps
+        the current list; a different vehicle set triggers a config entry
+        reload so the platforms are rebuilt for the new set.
+        """
+        now = time.monotonic()
+        first_fetch = not self.vehicles
+        if (
+            not first_fetch
+            and now - self._last_vehicle_refresh < _VEHICLE_REFRESH_INTERVAL
+        ):
+            return
+        self._last_vehicle_refresh = now
+        try:
+            vehicles = await self.client.get_vehicles()
+        except MazdaError as err:
+            if first_fetch:
+                raise
+            _LOGGER.debug("Mazda vehicle list refresh failed: %s", err)
+            return
+        if not vehicles:
+            if first_fetch:
+                self.vehicles = []
+            else:
+                _LOGGER.warning(
+                    "Mazda account reported no vehicles; keeping the current list"
+                )
+            return
+        current = {vehicle.car_id for vehicle in self.vehicles}
+        if first_fetch or {vehicle.car_id for vehicle in vehicles} == current:
+            self.vehicles = vehicles
+            return
+        _LOGGER.info("Mazda vehicle list changed; reloading the config entry")
+        self.vehicles = vehicles
+        self.hass.config_entries.async_schedule_reload(self.entry.entry_id)
+
     async def _async_fetch(self) -> dict[str, VehicleCondition]:
         """Fetch vehicles and their conditions."""
-        if not self.vehicles:
-            self.vehicles = await self.client.get_vehicles()
+        await self._async_maybe_refresh_vehicles()
 
         data: dict[str, VehicleCondition] = {}
         for vehicle in self.vehicles:
@@ -380,6 +434,32 @@ class MazdaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, VehicleConditio
         )
         return True
 
+    def _raise_rate_limited(self, err: MazdaRateLimitError) -> NoReturn:
+        """Raise UpdateFailed, deferring the next refresh past the normal cadence.
+
+        The gateway value wins when it asks for a longer wait; the configured
+        scan interval and the default interval are the floor, so a rate-limited
+        entry is never polled sooner than its normal cadence.
+        """
+        interval = (
+            self.update_interval.total_seconds()
+            if self.update_interval is not None
+            else float(DEFAULT_SCAN_INTERVAL)
+        )
+        retry_after = max(
+            err.retry_after or 0.0,
+            interval,
+            float(DEFAULT_SCAN_INTERVAL),
+        )
+        _LOGGER.warning(
+            "Mazda rate limited; deferring the next update by %.0f s: %s",
+            retry_after,
+            err,
+        )
+        raise UpdateFailed(
+            f"Mazda rate limited: {err}", retry_after=retry_after
+        ) from err
+
     async def _async_with_session_retry(
         self, action: Callable[[], Awaitable[Any]]
     ) -> Any:
@@ -402,7 +482,11 @@ class MazdaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, VehicleConditio
     async def async_condition_inquiry(self, vehicle_id: str) -> None:
         """Ask the vehicle for fresh data, recovering an expired session."""
         if not isinstance(self.client, MazdaClient):
-            raise HomeAssistantError("Remote commands require the Mazda client")
+            raise HomeAssistantError(
+                "Remote commands require the Mazda client",
+                translation_domain=DOMAIN,
+                translation_key="commands_require_client",
+            )
         await self._async_with_session_retry(
             lambda: self.client.control_condition_inquiry(vehicle_id)
         )
@@ -434,6 +518,8 @@ class MazdaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, VehicleConditio
         await self._async_maybe_refresh_tokens()
         try:
             return await self._async_fetch()
+        except MazdaRateLimitError as err:
+            self._raise_rate_limited(err)
         except MazdaAuthError as err:
             _LOGGER.warning("Mazda authentication failed, attempting token refresh")
             if await self._async_refresh_tokens(force=True):
@@ -474,7 +560,11 @@ class MazdaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, VehicleConditio
         different vehicles are independent.
         """
         if not isinstance(self.client, MazdaClient):
-            raise HomeAssistantError("Remote commands require the Mazda client")
+            raise HomeAssistantError(
+                "Remote commands require the Mazda client",
+                translation_domain=DOMAIN,
+                translation_key="commands_require_client",
+            )
 
         if serialize is None:
             serialize = optimistic_update is not None
@@ -497,7 +587,9 @@ class MazdaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, VehicleConditio
         except TimeoutError as error:
             raise HomeAssistantError(
                 "Another Mazda command for this vehicle is taking too long; "
-                "try again in a few seconds"
+                "try again in a few seconds",
+                translation_domain=DOMAIN,
+                translation_key="command_queue_busy",
             ) from error
 
         try:
@@ -591,7 +683,7 @@ class MazdaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, VehicleConditio
             )
 
             if result.status is CommandResultStatus.FAILED:
-                raise HomeAssistantError(_command_failure_message(result))
+                _raise_command_failure(result)
 
             if result.status in (
                 CommandResultStatus.SUCCESS,
@@ -670,7 +762,7 @@ class MazdaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, VehicleConditio
                 lambda: self.client.control_result_status(vehicle_id, command_id)
             )
             if result.status is CommandResultStatus.FAILED:
-                raise HomeAssistantError(_command_failure_message(result))
+                _raise_command_failure(result)
 
             now = loop.time()
             if now >= next_condition_at:

@@ -7,7 +7,12 @@ import pytest
 
 pytest.importorskip("homeassistant")
 
+import time
+from datetime import timedelta
+from types import SimpleNamespace
+
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from custom_components.mazda_6e_cx6.const import (
     CONF_ACCESS_TOKEN,
@@ -23,6 +28,7 @@ from custom_components.mazda_6e_cx6.mazda import (
     MazdaAPIError,
     MazdaAuthError,
     MazdaClient,
+    MazdaRateLimitError,
     Vehicle,
     VehicleCapabilities,
     VehicleCondition,
@@ -960,3 +966,103 @@ async def test_capabilities_failure_is_cached_without_raising():
 
     assert client.capabilities_calls == 1
     assert coordinator.vehicle_capabilities("car-1") is None
+
+
+class _VehicleListClient(MazdaClient):
+    """Fake client returning a scripted account vehicle list."""
+
+    def __init__(
+        self, vehicles: list[Vehicle], error: Exception | None = None
+    ) -> None:
+        self.access_token = "test_token_123"
+        self.vehicles = list(vehicles)
+        self.error = error
+        self.vehicle_calls = 0
+
+    async def get_vehicles(self) -> list[Vehicle]:
+        self.vehicle_calls += 1
+        if self.error is not None:
+            raise self.error
+        return list(self.vehicles)
+
+
+def _vehicle_coordinator(
+    client: _VehicleListClient,
+) -> tuple[MazdaDataUpdateCoordinator, list[str]]:
+    coordinator = object.__new__(MazdaDataUpdateCoordinator)
+    reloads: list[str] = []
+    coordinator.client = client
+    coordinator.vehicles = []
+    coordinator.data = {}
+    coordinator.update_interval = timedelta(seconds=120)
+    coordinator._last_vehicle_refresh = 0.0
+    coordinator.entry = SimpleNamespace(entry_id="entry-1")
+    coordinator.hass = SimpleNamespace(
+        config_entries=SimpleNamespace(
+            async_schedule_reload=lambda entry_id: reloads.append(entry_id)
+        )
+    )
+    return coordinator, reloads
+
+
+@pytest.mark.asyncio
+async def test_rate_limited_update_defers_past_the_scan_interval():
+    client = _VehicleListClient(
+        [],
+        error=MazdaRateLimitError("slow down", status_code=429, retry_after=90.0),
+    )
+    coordinator, _ = _vehicle_coordinator(client)
+
+    with pytest.raises(UpdateFailed) as err:
+        await coordinator._async_update_data()
+
+    assert err.value.retry_after == 120.0
+
+
+@pytest.mark.asyncio
+async def test_rate_limited_update_keeps_a_longer_gateway_wait():
+    client = _VehicleListClient(
+        [],
+        error=MazdaRateLimitError("slow down", status_code=429, retry_after=600.0),
+    )
+    coordinator, _ = _vehicle_coordinator(client)
+
+    with pytest.raises(UpdateFailed) as err:
+        await coordinator._async_update_data()
+
+    assert err.value.retry_after == 600.0
+
+
+@pytest.mark.asyncio
+async def test_vehicle_list_refresh_reloads_when_the_set_changes():
+    client = _VehicleListClient(
+        [Vehicle(car_id="car-1", vin="VIN1"), Vehicle(car_id="car-2", vin="VIN2")]
+    )
+    coordinator, reloads = _vehicle_coordinator(client)
+    coordinator.vehicles = [Vehicle(car_id="car-1", vin="VIN1")]
+
+    await coordinator._async_maybe_refresh_vehicles()
+
+    assert client.vehicle_calls == 1
+    assert reloads == ["entry-1"]
+    assert {vehicle.car_id for vehicle in coordinator.vehicles} == {"car-1", "car-2"}
+
+
+@pytest.mark.asyncio
+async def test_vehicle_list_refresh_keeps_the_list_inside_the_window_and_on_failure():
+    client = _VehicleListClient(
+        [Vehicle(car_id="car-2", vin="VIN2")],
+        error=MazdaAPIError("boom"),
+    )
+    coordinator, reloads = _vehicle_coordinator(client)
+    coordinator.vehicles = [Vehicle(car_id="car-1", vin="VIN1")]
+    coordinator._last_vehicle_refresh = time.monotonic()
+
+    await coordinator._async_maybe_refresh_vehicles()
+    assert client.vehicle_calls == 0
+
+    coordinator._last_vehicle_refresh = 0.0
+    await coordinator._async_maybe_refresh_vehicles()
+    assert client.vehicle_calls == 1
+    assert [vehicle.car_id for vehicle in coordinator.vehicles] == ["car-1"]
+    assert reloads == []

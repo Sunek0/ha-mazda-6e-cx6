@@ -1,54 +1,53 @@
 # Mazda Python SDK
 
-SDK asíncrono para la API de telemática y control remoto de los vehículos **Mazda 6e y CX-6e**
-(equivalentes a los Changan Deepal L07 y S07). Habla con el gateway CMA que usa la app
-**MAZDA 6e & CX-6e** (`com.cma.mazda.eu`, versión 1.2.3), no con el gateway internacional de
-My Changan.
+Async SDK for the telemetry and remote-control API of the **Mazda 6e and CX-6e** vehicles (the
+Changan Deepal L07 and S07 twins). It talks to the CMA gateway the **MAZDA 6e & CX-6e** app uses
+(`com.cma.mazda.eu`, version 1.2.3), not to the My Changan international gateway.
 
-Este paquete es independiente de `deepal_sdk`: no lo importa y no comparte estado con él.
+This package is independent from `deepal_sdk`: it does not import it and shares no state with it.
 
-## Características
+## Features
 
-- ⚡ **Asíncrono:** construido sobre `httpx` y `asyncio`.
-- 🔐 **Autenticación:** login por correo con código de verificación o con contraseña
-  (`cma-app-auth`), con el cifrado RSA que usa la app, refresco de sesión y logout.
-- 🚗 **Telemática:** lista de vehículos, configuración de funciones y condición (batería y carga,
-  autonomía, odómetro, puertas, ventanillas, climatización, asientos, neumáticos y combustible en
-  PHEV).
-- 📡 **MQTT:** bootstrap CA (`getConnConf`, `appGetCarConfFunc`, `getAuthTokenByUserId`) y
-  instantánea de condición en vivo.
-- 🎛️ **Control remoto:** comandos firmados (clima, puertas, ventanillas, maletero, aviso
-  luces/claxon, planes de carga y salida) con PIN de control.
-- 📐 **Tipado estricto:** modelos validados con Pydantic v2.
+- ⚡ **Async:** built on `httpx` and `asyncio`.
+- 🔐 **Authentication:** email login with a verification code or password (`cma-app-auth`), with the
+  RSA encryption the app uses, session refresh and logout.
+- 🚗 **Telemetry:** vehicle list, function configuration and condition (battery and charge, range,
+  odometer, doors, windows, climate, seats, tires and fuel on PHEVs).
+- 📡 **MQTT:** CA bootstrap (`getConnConf`, `appGetCarConfFunc`, `getAuthTokenByUserId`) and live
+  condition snapshots; the account auth token is reused within a one-minute window.
+- 🎛️ **Remote control:** signed commands (climate, doors, windows, trunk, lights/horn, charge and
+  departure plans) with the control PIN.
+- 🚦 **Rate limits:** HTTP 429 responses raise a typed rate-limit error carrying the gateway's
+  `Retry-After` value.
+- 📐 **Strict typing:** models validated with Pydantic v2.
 
-> Aviso: el protocolo se ha recuperado del APK 1.2.3 (`docs/apk-mazda-1.2.3.md`). Las partes que
-> dependen del gateway (`cma-app-gw`) están pendientes de validación con una cuenta Mazda real; ver
-> `docs/mazda-api.md`.
+> Warning: the protocol was recovered from the 1.2.3 APK. The parts that depend on the
+> `cma-app-gw` gateway are pending validation with a real Mazda account; see [`docs/api.md`](docs/api.md).
 
-## Instalación
+## Installation
 
 ```bash
 pip install -e .
 ```
 
-Los ejemplos de `examples/` se pueden ejecutar directamente con cualquier intérprete que tenga las
-dependencias del SDK, sin necesidad de instalarlo antes:
+The scripts under `examples/` run directly with any interpreter that has the SDK runtime
+dependencies, without installing it first:
 
 ```bash
 python mazda_sdk/examples/basic_status.py
 ```
 
-## Entornos
+## Environments
 
-| Identificador | REST | CA/MQTT |
+| Identifier | REST | CA/MQTT |
 | --- | --- | --- |
-| `prod_eu` (por defecto) | `https://cma-m.iov.changanauto.com.de/cma-app-gw` | `https://ca-m.iov.changanauto.com.de/user-apigw` |
+| `prod_eu` (default) | `https://cma-m.iov.changanauto.com.de/cma-app-gw` | `https://ca-m.iov.changanauto.com.de/user-apigw` |
 | `preprod_eu` | `https://cma-m-uat.iov.changanauto.com.de/cma-app-gw` | `https://ca-m-uat.iov.changanauto.com.de/user-apigw` |
 
-El SDK se identifica con `appid: com.cma.mazda.eu` y `appversion: V1.2.0` (valores del entorno de
-producción UE de `MazdaEnvBean`).
+The SDK identifies itself with `appid: com.cma.mazda.eu` and `appversion: V1.2.0` (the EU
+production values from `MazdaEnvBean`).
 
-## Login por contraseña
+## Password login
 
 ```python
 import asyncio
@@ -56,7 +55,7 @@ from mazda import MazdaClient
 
 async def main():
     async with MazdaClient(country="ES") as client:
-        await client.login_with_email_password("tu-correo@ejemplo.com", "tu-contraseña")
+        await client.login_with_email_password("your-email@example.com", "your-password")
         vehicles = await client.get_vehicles()
         for car in vehicles:
             cond = await client.get_vehicle_condition(car.car_id, vin=car.vin)
@@ -65,9 +64,9 @@ async def main():
 asyncio.run(main())
 ```
 
-La app también expone rutas `/v2` para el login; el SDK las usa con `use_v2=True`.
+The app also exposes `/v2` login routes; the SDK uses them with `use_v2=True`.
 
-## Login por código de correo
+## Email code login
 
 ```python
 import asyncio
@@ -75,17 +74,17 @@ from mazda import MazdaClient
 
 async def main():
     async with MazdaClient(country="ES") as client:
-        await client.request_email_code("tu-correo@ejemplo.com")
-        code = input("Código recibido por correo: ")
-        token = await client.login_with_email_code("tu-correo@ejemplo.com", code)
+        await client.request_email_code("your-email@example.com")
+        code = input("Verification code received by email: ")
+        token = await client.login_with_email_code("your-email@example.com", code)
         print(f"Access Token: {token.access_token}")
 
 asyncio.run(main())
 ```
 
-Ejemplo ejecutable: `python mazda_sdk/examples/email_login_example.py`.
+Runnable example: `python mazda_sdk/examples/email_login_example.py`.
 
-## Telemetría MQTT
+## MQTT telemetry
 
 ```python
 import asyncio
@@ -93,7 +92,7 @@ from mazda import MazdaClient
 
 async def main():
     async with MazdaClient(country="ES") as client:
-        await client.login_with_email_password("tu-correo@ejemplo.com", "tu-contraseña")
+        await client.login_with_email_password("your-email@example.com", "your-password")
         car = (await client.get_vehicles())[0]
         if client.is_mqtt_vehicle(car):
             cond = await client.mqtt_condition(car.car_id, vin=car.vin)
@@ -102,21 +101,21 @@ async def main():
 asyncio.run(main())
 ```
 
-Ejemplo ejecutable: `python mazda_sdk/examples/mqtt_status.py`.
+Runnable example: `python mazda_sdk/examples/mqtt_status.py`.
 
-## Control remoto
+## Remote control
 
 ```python
-await client.check_control_code("1234")           # PIN de control
+await client.check_control_code("1234")           # control PIN
 await client.control_air_conditioner("CAR_ID", enabled=True, target_temp_c=22.0)
 await client.control_doors("CAR_ID", open_value=False)
 result = await client.control_result_status("CAR_ID", command_id)
 ```
 
-## Estructura del Proyecto
+## Project layout
 
-- `mazda/client.py`: cliente asíncrono principal (`MazdaClient`).
-- `mazda/models/`: modelos Pydantic (`Vehicle`, `VehicleCondition`, `AuthToken`, ...).
-- `mazda/endpoints.py`: entornos y endpoints del gateway CMA.
-- `mazda/mqtt.py`: transporte MQTT 5.0 y normalización de parámetros.
-- `examples/`: scripts de demostración.
+- `mazda/client.py`: main async client (`MazdaClient`).
+- `mazda/models/`: Pydantic models (`Vehicle`, `VehicleCondition`, `AuthToken`, ...).
+- `mazda/endpoints.py`: CMA gateway environments and endpoints.
+- `mazda/mqtt.py`: MQTT 5.0 transport and parameter normalization.
+- `examples/`: demonstration scripts.

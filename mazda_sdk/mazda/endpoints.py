@@ -25,7 +25,7 @@ class MazdaEnvironment:
     app_id: str
     base_url: str
     ca_base_url: str
-    gateway_prefix: str = "/cma-app-gw/cma-app-gw"
+    gateway_prefix: str = "/cma-app-gw"
 
 
 MAZDA_ENVIRONMENTS: dict[str, MazdaEnvironment] = {
@@ -88,7 +88,7 @@ MAZDA_CONTROL_DOORS = "/cma-app-gw/cma-app-car-control/api/control/doors"
 MAZDA_CONTROL_WINDOWS = "/cma-app-gw/cma-app-car-control/api/control/windows"
 MAZDA_CONTROL_TRUNK = "/cma-app-gw/cma-app-car-control/api/control/trunk"
 MAZDA_CONTROL_FLASHING_HONKING = (
-    "/cma-app-car-control/api/control/flashing-honking"
+    "/cma-app-gw/cma-app-car-control/api/control/flashing-honking"
 )
 MAZDA_CHARGE_PERCENTAGE = "/cma-app-gw/cma-app-car-control/api/charge/percentage"
 MAZDA_CHARGE_MODIFY_PLAN = "/cma-app-gw/cma-app-car-control/api/charge/modify-plan"
@@ -99,21 +99,41 @@ MAZDA_CONTROL_DEFROST = "/cma-app-gw/cma-app-car-control/api/control/defrost"
 MAZDA_CONTROL_SEATS_HEAT = "/cma-app-gw/cma-app-car-control/api/control/seats/heat"
 MAZDA_CONTROL_SEATS_WIND = "/cma-app-gw/cma-app-car-control/api/control/seats/wind"
 MAZDA_CONTROL_STEERING_WHEEL_HEAT = (
-    "/cma-app-car-control/api/control/steering-wheel/heat"
+    "/cma-app-gw/cma-app-car-control/api/control/steering-wheel/heat"
 )
 MAZDA_CONTROL_FOTA_PLAN = "/cma-app-gw/cma-app-car-control/api/control/fota-plan"
 MAZDA_DEPARTURE_ADD_PLAN = (
-    "/cma-app-car-control/api/departure-plans/add-plan"
+    "/cma-app-gw/cma-app-car-control/api/departure-plans/add-plan"
 )
 MAZDA_DEPARTURE_MODIFY_PLAN = (
-    "/cma-app-car-control/api/departure-plans/modify-plan"
+    "/cma-app-gw/cma-app-car-control/api/departure-plans/modify-plan"
 )
 MAZDA_DEPARTURE_DELETE = "/cma-app-gw/cma-app-car-control/api/departure-plans/delete"
 MAZDA_DEPARTURE_VALIDITY = (
-    "/cma-app-car-control/api/departure-plans/validity"
+    "/cma-app-gw/cma-app-car-control/api/departure-plans/validity"
 )
 MAZDA_DEPARTURE_ENABLED = (
-    "/cma-app-car-control/api/departure-plans/enabled"
+    "/cma-app-gw/cma-app-car-control/api/departure-plans/enabled"
+)
+MAZDA_DEPARTURE_PLAN_LIST = (
+    "/cma-app-gw/cma-app-car-control/api/departure-plans/plan-list"
+)
+
+# Battery heating plans (CarBatteryApi.queryHeatingPlans and the CarControlApi commands)
+MAZDA_HEATING_PLAN_LIST = (
+    "/cma-app-gw/cma-app-car-control/api/heating-plans/query/list"
+)
+MAZDA_HEATING_PLAN_ADD = (
+    "/cma-app-gw/cma-app-car-control/api/heating-plans/add-plan"
+)
+MAZDA_HEATING_PLAN_UPDATE = (
+    "/cma-app-gw/cma-app-car-control/api/heating-plans/update-plan"
+)
+MAZDA_HEATING_PLAN_REMOVE = (
+    "/cma-app-gw/cma-app-car-control/api/heating-plans/remove"
+)
+MAZDA_HEATING_PLAN_AVAILABILITY = (
+    "/cma-app-gw/cma-app-car-control/api/heating-plans/plan-availability"
 )
 
 # CA gateway (MQTT telemetry bootstrap)

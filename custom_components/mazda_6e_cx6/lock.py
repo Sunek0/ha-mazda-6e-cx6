@@ -10,11 +10,13 @@ from .coordinator import MazdaDataUpdateCoordinator
 from .entity import MazdaEntity, async_setup_control_entities
 from .runtime_data import MazdaConfigEntry
 
+# Coordinator is used to centralize the data updates
+PARALLEL_UPDATES = 0
+
 
 def _set_locked(condition: Any, locked: bool) -> Any:
     condition.doors.locked = locked
     return condition
-
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -29,7 +31,6 @@ async def async_setup_entry(
         lambda coordinator, vehicle: [MazdaDoorsLock(coordinator, vehicle)],
         requires_control_pin=True,
     )
-
 
 class MazdaDoorsLock(MazdaEntity, LockEntity):
     """Vehicle door lock."""

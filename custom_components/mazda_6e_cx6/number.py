@@ -11,13 +11,15 @@ from .coordinator import MazdaDataUpdateCoordinator
 from .entity import MazdaEntity, async_setup_control_entities
 from .runtime_data import MazdaConfigEntry
 
+# Coordinator is used to centralize the data updates
+PARALLEL_UPDATES = 0
+
 
 SEAT_LABELS = {"front_left": "Front Left", "front_right": "Front Right"}
 SEAT_FUNCTIONS = {
     "heating": ("control_seats_heat", "heating_level", "mdi:car-seat-heater"),
     "ventilation": ("control_seats_wind", "ventilation_level", "mdi:car-seat-cooler"),
 }
-
 
 def supports_charge_limit(vehicle: Any) -> bool:
     """Return whether the vehicle supports setting the AC charge limit.
@@ -27,7 +29,6 @@ def supports_charge_limit(vehicle: Any) -> bool:
     here when the function configuration exposes a SOC-set code.
     """
     return True
-
 
 def build_control_numbers(
     coordinator: MazdaDataUpdateCoordinator, vehicle: Any
@@ -41,16 +42,13 @@ def build_control_numbers(
             entities.append(MazdaSeatLevelNumber(coordinator, vehicle, seat, function))
     return entities
 
-
 def _set_charge_limit(condition: Any, percentage: int) -> Any:
     condition.battery.charge_limit_percent = percentage
     return condition
 
-
 def _set_seat_level(condition: Any, seat: str, field: str, level: int) -> Any:
     setattr(getattr(condition.seats, seat), field, level)
     return condition
-
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -59,7 +57,6 @@ async def async_setup_entry(
 ) -> None:
     """Set up the charge limit and seat level numbers."""
     async_setup_control_entities(hass, entry, async_add_entities, build_control_numbers)
-
 
 class MazdaChargeLimitNumber(MazdaEntity, NumberEntity):
     """Maximum battery state of charge for AC charging."""
@@ -91,7 +88,6 @@ class MazdaChargeLimitNumber(MazdaEntity, NumberEntity):
             lambda: self.client.control_charge_limit(self._car_id, int(value)),
             optimistic_update=lambda cond: _set_charge_limit(cond, int(value)),
         )
-
 
 class MazdaSeatLevelNumber(MazdaEntity, NumberEntity):
     """Front seat heating or ventilation level (0 = off, 1-3 = level)."""

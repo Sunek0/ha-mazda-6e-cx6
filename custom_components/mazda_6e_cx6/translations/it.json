@@ -401,5 +401,37 @@
         "name": "Fine programma di ricarica"
       }
     }
+  },
+  "exceptions": {
+    "command_failed": {
+      "message": "Il comando Mazda non è riuscito: {error}"
+    },
+    "climate_command_failed": {
+      "message": "Il comando clima Mazda non è riuscito: {error}"
+    },
+    "refresh_command_failed": {
+      "message": "Il comando di aggiornamento Mazda non è riuscito: {error}"
+    },
+    "unsupported_hvac_mode": {
+      "message": "Modalità clima non supportata: {mode}"
+    },
+    "charge_schedule_unavailable": {
+      "message": "Il programma di ricarica Mazda non è disponibile"
+    },
+    "commands_require_client": {
+      "message": "I comandi remoti richiedono il client Mazda"
+    },
+    "command_queue_busy": {
+      "message": "Un altro comando Mazda per questo veicolo sta impiegando troppo tempo; riprova tra qualche secondo"
+    },
+    "mqtt_controls_read_only": {
+      "message": "I veicoli MQTT sono di sola lettura; attiva prima l'opzione sperimentale dei comandi MQTT"
+    },
+    "command_result_failed": {
+      "message": "Il comando Mazda non è riuscito con codice risultato {code}: {message}"
+    },
+    "command_result_failed_unreachable": {
+      "message": "Il comando Mazda non è riuscito con codice risultato {code}: {message} (il veicolo non ha accettato il comando; potrebbe essere offline o occupato, riprova quando è sveglio)"
+    }
   }
 }

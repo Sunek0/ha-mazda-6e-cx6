@@ -14,6 +14,9 @@ from .coordinator import MazdaDataUpdateCoordinator
 from .entity import MazdaEntity, async_setup_control_entities
 from .runtime_data import MazdaConfigEntry
 
+# Coordinator is used to centralize the data updates
+PARALLEL_UPDATES = 0
+
 
 def _set_windows(condition: Any, is_open: bool) -> Any:
     windows = condition.windows
@@ -23,11 +26,9 @@ def _set_windows(condition: Any, is_open: bool) -> Any:
     windows.rear_right_open = is_open
     return condition
 
-
 def _set_trunk(condition: Any, is_open: bool) -> Any:
     condition.doors.trunk_open = is_open
     return condition
-
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -45,7 +46,6 @@ async def async_setup_entry(
         ],
         requires_control_pin=True,
     )
-
 
 class MazdaWindowsCover(MazdaEntity, CoverEntity):
     """All-window cover."""
@@ -90,7 +90,6 @@ class MazdaWindowsCover(MazdaEntity, CoverEntity):
             is_done=lambda: self.is_closed is True,
             optimistic_update=lambda cond: _set_windows(cond, False),
         )
-
 
 class MazdaTrunkCover(MazdaEntity, CoverEntity):
     """Trunk cover."""

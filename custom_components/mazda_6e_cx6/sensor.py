@@ -36,9 +36,12 @@ from .mazda import MazdaClient
 from .runtime_data import MazdaConfigEntry
 from .vehicle_model import seat_supported, supports_fuel
 
+# Coordinator is used to centralize the data updates
+PARALLEL_UPDATES = 0
+
+
 # Fuel sensors exist only for fuel vehicles (see supports_fuel).
 FUEL_SENSOR_KEYS = frozenset({"fuel_level", "fuel_range", "fuel_tank_capacity"})
-
 
 def build_sensors(
     coordinator: MazdaDataUpdateCoordinator, vehicle: Any
@@ -87,7 +90,6 @@ def build_sensors(
 
     return entities
 
-
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: MazdaConfigEntry,
@@ -102,7 +104,6 @@ async def async_setup_entry(
         entities.extend(build_sensors(coordinator, vehicle))
 
     async_add_entities(entities)
-
 
 class MazdaBaseSensor(CoordinatorEntity[MazdaDataUpdateCoordinator], SensorEntity):
     """Base class for Mazda sensors."""
@@ -125,7 +126,6 @@ class MazdaBaseSensor(CoordinatorEntity[MazdaDataUpdateCoordinator], SensorEntit
             model=self.vehicle.series_name or DEFAULT_MODEL,
         )
 
-
 class MazdaBatterySocSensor(MazdaBaseSensor):
     """Battery State of Charge (%) sensor."""
 
@@ -144,7 +144,6 @@ class MazdaBatterySocSensor(MazdaBaseSensor):
         """Return battery SoC %."""
         cond = self.coordinator.data.get(self._car_id)
         return cond.battery.soc_percentage if cond else None
-
 
 class MazdaRemainingRangeSensor(MazdaBaseSensor):
     """Remaining range (km) sensor."""
@@ -165,7 +164,6 @@ class MazdaRemainingRangeSensor(MazdaBaseSensor):
         cond = self.coordinator.data.get(self._car_id)
         return cond.battery.remaining_range_km if cond else None
 
-
 class MazdaOdometerSensor(MazdaBaseSensor):
     """Total mileage / odometer (km) sensor."""
 
@@ -184,7 +182,6 @@ class MazdaOdometerSensor(MazdaBaseSensor):
         """Return the total odometer in km."""
         cond = self.coordinator.data.get(self._car_id)
         return cond.total_odometer_km if cond else None
-
 
 class MazdaMileageYesterdaySensor(MazdaBaseSensor):
     """Mileage driven yesterday (km) sensor, MQTT-backed vehicles only."""
@@ -205,7 +202,6 @@ class MazdaMileageYesterdaySensor(MazdaBaseSensor):
         cond = self.coordinator.data.get(self._car_id)
         return cond.mileage_yesterday_km if cond else None
 
-
 class MazdaTripMileageSensor(MazdaBaseSensor):
     """Mileage since the current ignition cycle (km), MQTT-backed vehicles only."""
 
@@ -224,7 +220,6 @@ class MazdaTripMileageSensor(MazdaBaseSensor):
         """Return the trip mileage in km."""
         cond = self.coordinator.data.get(self._car_id)
         return cond.trip_mileage_km if cond else None
-
 
 class MazdaTirePressureSensor(MazdaBaseSensor):
     """Tire pressure (bar) sensor for international vehicles."""
@@ -247,7 +242,6 @@ class MazdaTirePressureSensor(MazdaBaseSensor):
         if not cond:
             return None
         return getattr(cond.tires, self._key).pressure_bar
-
 
 class MazdaSeatLevelSensor(MazdaBaseSensor):
     """Seat heating or ventilation level sensor for international vehicles."""
@@ -276,7 +270,6 @@ class MazdaSeatLevelSensor(MazdaBaseSensor):
             return None
         return getattr(getattr(cond.seats, self._position), self._kind)
 
-
 class MazdaSteeringWheelHeaterLevelSensor(MazdaBaseSensor):
     """Steering wheel heater level sensor for international vehicles."""
 
@@ -294,13 +287,11 @@ class MazdaSteeringWheelHeaterLevelSensor(MazdaBaseSensor):
         cond = self.coordinator.data.get(self._car_id)
         return cond.climate.steering_wheel_heater_level if cond else None
 
-
 @dataclass(frozen=True, kw_only=True)
 class MazdaSensorDescription(SensorEntityDescription):
     """Description of an extended international sensor."""
 
     value_fn: Callable[[Any, Any], Any]
-
 
 SENSORS: tuple[MazdaSensorDescription, ...] = (
     MazdaSensorDescription(
@@ -516,7 +507,6 @@ SENSORS: tuple[MazdaSensorDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
 )
-
 
 class MazdaSensor(MazdaBaseSensor):
     """Extended international sensor driven by a description."""

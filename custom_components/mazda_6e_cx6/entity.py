@@ -76,7 +76,12 @@ class MazdaEntity(CoordinatorEntity[MazdaDataUpdateCoordinator]):
                 optimistic_update=optimistic_update,
             )
         except MazdaError as err:
-            raise HomeAssistantError(f"Mazda command failed: {err}") from err
+            raise HomeAssistantError(
+                f"Mazda command failed: {err}",
+                translation_domain=DOMAIN,
+                translation_key="command_failed",
+                translation_placeholders={"error": str(err)},
+            ) from err
 
 
 def async_setup_control_entities(

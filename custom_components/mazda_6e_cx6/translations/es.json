@@ -401,5 +401,37 @@
         "name": "Fin del horario de carga"
       }
     }
+  },
+  "exceptions": {
+    "command_failed": {
+      "message": "El comando de Mazda falló: {error}"
+    },
+    "climate_command_failed": {
+      "message": "El comando de climatización de Mazda falló: {error}"
+    },
+    "refresh_command_failed": {
+      "message": "El comando de actualización de Mazda falló: {error}"
+    },
+    "unsupported_hvac_mode": {
+      "message": "Modo de climatización no compatible: {mode}"
+    },
+    "charge_schedule_unavailable": {
+      "message": "El plan de programación de carga de Mazda no está disponible"
+    },
+    "commands_require_client": {
+      "message": "Los comandos remotos requieren el cliente de Mazda"
+    },
+    "command_queue_busy": {
+      "message": "Otro comando de Mazda para este vehículo está tardando demasiado; inténtalo de nuevo en unos segundos"
+    },
+    "mqtt_controls_read_only": {
+      "message": "Los vehículos MQTT son de solo lectura; activa primero la opción experimental de controles MQTT"
+    },
+    "command_result_failed": {
+      "message": "El comando de Mazda falló con el código de resultado {code}: {message}"
+    },
+    "command_result_failed_unreachable": {
+      "message": "El comando de Mazda falló con el código de resultado {code}: {message} (el vehículo no aceptó el comando; puede estar desconectado u ocupado, inténtalo cuando esté despierto)"
+    }
   }
 }

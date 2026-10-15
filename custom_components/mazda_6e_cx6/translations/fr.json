@@ -401,5 +401,37 @@
         "name": "Fin de la plage de charge"
       }
     }
+  },
+  "exceptions": {
+    "command_failed": {
+      "message": "La commande Mazda a échoué : {error}"
+    },
+    "climate_command_failed": {
+      "message": "La commande de climatisation Mazda a échoué : {error}"
+    },
+    "refresh_command_failed": {
+      "message": "La commande d'actualisation Mazda a échoué : {error}"
+    },
+    "unsupported_hvac_mode": {
+      "message": "Mode de climatisation non pris en charge : {mode}"
+    },
+    "charge_schedule_unavailable": {
+      "message": "Le programme de charge Mazda n'est pas disponible"
+    },
+    "commands_require_client": {
+      "message": "Les commandes à distance nécessitent le client Mazda"
+    },
+    "command_queue_busy": {
+      "message": "Une autre commande Mazda pour ce véhicule prend trop de temps ; réessayez dans quelques secondes"
+    },
+    "mqtt_controls_read_only": {
+      "message": "Les véhicules MQTT sont en lecture seule ; activez d'abord l'option expérimentale de commandes MQTT"
+    },
+    "command_result_failed": {
+      "message": "La commande Mazda a échoué avec le code de résultat {code} : {message}"
+    },
+    "command_result_failed_unreachable": {
+      "message": "La commande Mazda a échoué avec le code de résultat {code} : {message} (le véhicule n'a pas accepté la commande ; il est peut-être hors ligne ou occupé, réessayez lorsqu'il est réveillé)"
+    }
   }
 }

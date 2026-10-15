@@ -22,6 +22,34 @@ SEAT_VENT_FUNCTION_CODES = {
     "rear_right": "#RightRearSeatVent",
 }
 
+# Extended function codes from the app's capability table (the `#…` literals of
+# the 1.2.3 DEX) and from a live 6e function configuration (see
+# docs/mazda-6e-function-config-codes.md). A `…BT` variant means the app drives
+# that feature only through the Bluetooth key; the flag only reports that the
+# car carries the capability, not that the cloud can control it.
+EXTENDED_FUNCTION_CODES = {
+    "spoiler": (
+        "ElectricTailWingSW",
+        "#SpoilerRaiseLowerBT",
+        "#openTail",
+        "#closeTail",
+    ),
+    "air_purifier": ("#airPurification", "ACAirPurifierSW"),
+    "air_recirculation": ("ACAirCirculatorSW",),
+    "wiper_heating": ("#windshieldWiperHeat",),
+    "window_ventilation": (
+        "WindowSlightlyDown",
+        "#windowVentilationBT",
+        "#windowControlBT",
+    ),
+    "power_tailgate": (
+        "TrunkAutoSW",
+        "#trunkOpenLockBtn",
+        "#rearTrunkDoorControl",
+        "#rearTrunkDoorBT",
+    ),
+}
+
 
 class Vehicle(BaseModel):
     """Mazda Vehicle Summary model."""
@@ -57,6 +85,24 @@ class VehicleCapabilities(BaseModel):
         default=False,
         description="Vehicle reports a fuel tank capability (PHEV / range extender)",
     )
+    has_spoiler: bool = Field(
+        default=False, description="Electric tail wing reported by the car"
+    )
+    has_air_purifier: bool = Field(
+        default=False, description="Air purifier reported by the car"
+    )
+    has_air_recirculation: bool = Field(
+        default=False, description="Air recirculation reported by the car"
+    )
+    has_wiper_heating: bool = Field(
+        default=False, description="Windshield wiper heating reported by the car"
+    )
+    has_window_ventilation: bool = Field(
+        default=False, description="Window ventilation reported by the car"
+    )
+    has_power_tailgate: bool = Field(
+        default=False, description="Automatic tailgate reported by the car"
+    )
     trim_hint: Literal["max", "pro", "unknown"] = Field(
         default=MQTT_TRIM_UNKNOWN,
         description="Trim hint derived from the capabilities, never from telemetry",
@@ -76,11 +122,16 @@ class VehicleCapabilities(BaseModel):
         front_ventilation = (
             seats["front_left"].ventilation or seats["front_right"].ventilation
         )
+        extended = {
+            f"has_{feature}": any(code in known for code in feature_codes)
+            for feature, feature_codes in EXTENDED_FUNCTION_CODES.items()
+        }
         return cls(
             raw_codes=[str(code) for code in codes],
             seats=seats,
             has_fuel="#oilMileage" in known,
             trim_hint=MQTT_TRIM_MAX if front_ventilation else MQTT_TRIM_PRO,
+            **extended,
         )
 
 

@@ -20,13 +20,16 @@ from .mazda import MazdaClient
 from .runtime_data import MazdaConfigEntry
 from .vehicle_model import seat_supported
 
+# Coordinator is used to centralize the data updates
+PARALLEL_UPDATES = 0
+
+
 # Rear seat heating sensors map to a seat position, so they follow the
 # capabilities reported by the vehicle.
 REAR_SEAT_HEATING_KEYS = {
     "rear_left_seat_heating": "rear_left",
     "rear_right_seat_heating": "rear_right",
 }
-
 
 def build_binary_sensors(
     coordinator: MazdaDataUpdateCoordinator, vehicle: Any
@@ -69,7 +72,6 @@ def build_binary_sensors(
 
     return entities
 
-
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: MazdaConfigEntry,
@@ -84,7 +86,6 @@ async def async_setup_entry(
         entities.extend(build_binary_sensors(coordinator, vehicle))
 
     async_add_entities(entities)
-
 
 class MazdaBaseBinarySensor(CoordinatorEntity[MazdaDataUpdateCoordinator], BinarySensorEntity):
     """Base binary sensor for Mazda."""
@@ -106,7 +107,6 @@ class MazdaBaseBinarySensor(CoordinatorEntity[MazdaDataUpdateCoordinator], Binar
             model=self.vehicle.series_name or DEFAULT_MODEL,
         )
 
-
 class MazdaChargerPluggedBinarySensor(MazdaBaseBinarySensor):
     """Charging cable plugged in binary sensor."""
 
@@ -124,7 +124,6 @@ class MazdaChargerPluggedBinarySensor(MazdaBaseBinarySensor):
         cond = self.coordinator.data.get(self._car_id)
         return cond.battery.charger_connected if cond else None
 
-
 class MazdaDoorsLockedBinarySensor(MazdaBaseBinarySensor):
     """Doors lock binary sensor."""
 
@@ -141,7 +140,6 @@ class MazdaDoorsLockedBinarySensor(MazdaBaseBinarySensor):
         """Return True if unlocked (BinarySensorDeviceClass.LOCK is_on means UNLOCKED)."""
         cond = self.coordinator.data.get(self._car_id)
         return not cond.doors.locked if cond else None
-
 
 class MazdaTireAlarmBinarySensor(MazdaBaseBinarySensor):
     """Tire pressure alarm binary sensor for international vehicles."""
@@ -163,7 +161,6 @@ class MazdaTireAlarmBinarySensor(MazdaBaseBinarySensor):
             return None
         return getattr(cond.tires, self._key).alarm
 
-
 class MazdaWindowBinarySensor(MazdaBaseBinarySensor):
     """Window open binary sensor for international vehicles."""
 
@@ -184,7 +181,6 @@ class MazdaWindowBinarySensor(MazdaBaseBinarySensor):
             return None
         return getattr(cond.windows, self._key)
 
-
 class MazdaSteeringWheelHeaterBinarySensor(MazdaBaseBinarySensor):
     """Steering wheel heater binary sensor for international vehicles."""
 
@@ -202,13 +198,11 @@ class MazdaSteeringWheelHeaterBinarySensor(MazdaBaseBinarySensor):
         cond = self.coordinator.data.get(self._car_id)
         return cond.climate.steering_wheel_heater_on if cond else None
 
-
 @dataclass(frozen=True, kw_only=True)
 class MazdaBinarySensorDescription(BinarySensorEntityDescription):
     """Description of an extended international binary sensor."""
 
     value_fn: Callable[[Any, Any], bool | None]
-
 
 def _charging(condition: Any, vehicle: Any) -> bool | None:
     status = condition.battery.charging_status
@@ -216,10 +210,8 @@ def _charging(condition: Any, vehicle: Any) -> bool | None:
         return None
     return str(status) not in ("0", "None")
 
-
 def _not_locked(value: bool | None) -> bool | None:
     return None if value is None else not value
-
 
 BINARY_SENSORS: tuple[MazdaBinarySensorDescription, ...] = (
     MazdaBinarySensorDescription(
@@ -413,7 +405,6 @@ BINARY_SENSORS: tuple[MazdaBinarySensorDescription, ...] = (
         icon="mdi:car-seat-cooler",
     ),
 )
-
 
 class MazdaBinarySensor(MazdaBaseBinarySensor):
     """Extended international binary sensor driven by a description."""

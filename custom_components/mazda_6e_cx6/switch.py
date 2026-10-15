@@ -7,20 +7,22 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .const import DOMAIN
 from .coordinator import MazdaDataUpdateCoordinator
 from .entity import MazdaEntity, async_setup_control_entities
 from .runtime_data import MazdaConfigEntry
+
+# Coordinator is used to centralize the data updates
+PARALLEL_UPDATES = 0
 
 
 def _set_schedule_enabled(condition: Any, enabled: bool) -> Any:
     condition.battery.charge_schedule_enabled = enabled
     return condition
 
-
 def _set_steering_wheel_heat(condition: Any, enabled: bool) -> Any:
     condition.climate.steering_wheel_heater_on = enabled
     return condition
-
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -37,7 +39,6 @@ async def async_setup_entry(
             MazdaSteeringWheelHeatSwitch(coordinator, vehicle),
         ],
     )
-
 
 class MazdaChargeScheduleSwitch(MazdaEntity, SwitchEntity):
     """Enable or disable the charging schedule."""
@@ -69,7 +70,11 @@ class MazdaChargeScheduleSwitch(MazdaEntity, SwitchEntity):
     async def _async_update(self, *, enabled: bool) -> None:
         cond = self.condition
         if not cond or not cond.battery.charge_plan_id:
-            raise HomeAssistantError("Mazda charge schedule plan is not available")
+            raise HomeAssistantError(
+                "Mazda charge schedule plan is not available",
+                translation_domain=DOMAIN,
+                translation_key="charge_schedule_unavailable",
+            )
         await self.async_send_command(
             lambda: self.client.control_charge_schedule(
                 self._car_id,
@@ -83,7 +88,6 @@ class MazdaChargeScheduleSwitch(MazdaEntity, SwitchEntity):
             ),
             optimistic_update=lambda new: _set_schedule_enabled(new, enabled),
         )
-
 
 class MazdaSteeringWheelHeatSwitch(MazdaEntity, SwitchEntity):
     """Turn the steering wheel heating on or off."""
