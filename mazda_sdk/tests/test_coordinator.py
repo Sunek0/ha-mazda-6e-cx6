@@ -19,7 +19,10 @@ from custom_components.mazda_6e_cx6.const import (
     CONF_CAC_TOKEN,
     CONF_REFRESH_TOKEN,
 )
-from custom_components.mazda_6e_cx6.coordinator import MazdaDataUpdateCoordinator
+from custom_components.mazda_6e_cx6.coordinator import (
+    MazdaDataUpdateCoordinator,
+    _VEHICLE_REFRESH_INTERVAL,
+)
 from custom_components.mazda_6e_cx6.mazda import (
     AuthToken,
     ClimateCondition,
@@ -995,7 +998,7 @@ def _vehicle_coordinator(
     coordinator.vehicles = []
     coordinator.data = {}
     coordinator.update_interval = timedelta(seconds=120)
-    coordinator._last_vehicle_refresh = 0.0
+    coordinator._last_vehicle_refresh = None
     coordinator.entry = SimpleNamespace(entry_id="entry-1")
     coordinator.hass = SimpleNamespace(
         config_entries=SimpleNamespace(
@@ -1040,6 +1043,9 @@ async def test_vehicle_list_refresh_reloads_when_the_set_changes():
     )
     coordinator, reloads = _vehicle_coordinator(client)
     coordinator.vehicles = [Vehicle(car_id="car-1", vin="VIN1")]
+    coordinator._last_vehicle_refresh = (
+        time.monotonic() - _VEHICLE_REFRESH_INTERVAL - 1.0
+    )
 
     await coordinator._async_maybe_refresh_vehicles()
 
@@ -1061,7 +1067,9 @@ async def test_vehicle_list_refresh_keeps_the_list_inside_the_window_and_on_fail
     await coordinator._async_maybe_refresh_vehicles()
     assert client.vehicle_calls == 0
 
-    coordinator._last_vehicle_refresh = 0.0
+    coordinator._last_vehicle_refresh = (
+        time.monotonic() - _VEHICLE_REFRESH_INTERVAL - 1.0
+    )
     await coordinator._async_maybe_refresh_vehicles()
     assert client.vehicle_calls == 1
     assert [vehicle.car_id for vehicle in coordinator.vehicles] == ["car-1"]

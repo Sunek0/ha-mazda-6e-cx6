@@ -118,7 +118,7 @@ class MazdaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, VehicleConditio
         self.entry = entry
         self.client = client
         self.vehicles: list[Vehicle] = []
-        self._last_vehicle_refresh: float = 0.0
+        self._last_vehicle_refresh: float | None = None
         self._command_locks: dict[str, asyncio.Lock] = {}
         self._optimistic_holds: dict[str, dict[str, Any]] = {}
         self._background_tasks: set[asyncio.Task] = set()
@@ -135,7 +135,7 @@ class MazdaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, VehicleConditio
         now = time.monotonic()
         first_fetch = not self.vehicles
         if (
-            not first_fetch
+            self._last_vehicle_refresh is not None
             and now - self._last_vehicle_refresh < _VEHICLE_REFRESH_INTERVAL
         ):
             return
