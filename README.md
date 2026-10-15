@@ -20,8 +20,8 @@ The integration talks to the Mazda CMA gateway the MAZDA 6e & CX-6e app uses.
 
 | Model | Notes |
 | --- | --- |
-| Mazda 6e (Deepal L07 twin) | Telemetry and signed remote controls through the REST API; MQTT telemetry when the API reports `protocolType: MQTT`. |
-| Mazda CX-6e (Deepal S07 twin) | Telemetry and signed remote controls through the REST API; MQTT telemetry when the API reports `protocolType: MQTT`. |
+| Mazda 6e | Telemetry and signed remote controls through the REST API; MQTT telemetry when the API reports `protocolType: MQTT`. |
+| Mazda CX-6e | Telemetry and signed remote controls through the REST API; MQTT telemetry when the API reports `protocolType: MQTT`. |
 
 Vehicles whose API reports `protocolType: MQTT` report telemetry through the CA/MQTT gateway and
 stay read-only unless you enable the experimental remote controls option; the rest use the signed
